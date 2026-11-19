@@ -2,8 +2,8 @@ import crypto from 'node:crypto';
 import {get,put,BlobPreconditionFailedError} from '@vercel/blob';
 
 const PATH='studybull-courses-v1.json';
-const ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull.qd.je','https://www.studybull.qd.je','https://admin.studybull.qd.je']);
-const OWNER_ORIGINS=new Set(['https://studybull-hub.vercel.app','https://admin.studybull.qd.je']);
+const ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtms-projects.vercel.app','https://studybull.qd.je','https://www.studybull.qd.je','https://admin.studybull.qd.je']);
+const OWNER_ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtms-projects.vercel.app','https://admin.studybull.qd.je']);
 const COOKIE='sb_owner_v1';
 const attempts=new Map();
 const publicAttempts=new Map();
@@ -22,6 +22,17 @@ function send(res,status,data){res.statusCode=status;res.setHeader('Content-Type
 let readCache=null,readUntil=0;
 function defaults(){return {folders:[],banners:[],donationMessage:'',settings:{},users:[],notes:[],taxonomy:{categories:[],subjects:[],chapters:[]},pyqs:[],mocks:[],liveClasses:[],notifications:[],popups:[],appUpdate:{},feedback:[],activityLogs:[],loginHistory:[],updatedAt:null}}
 async function read(fresh=false){if(!fresh&&readCache&&Date.now()<readUntil)return readCache;const r=await get(PATH,{access:'private',useCache:false});if(!r)return {...defaults(),revision:null};const text=await new Response(r.stream).text();readCache={...defaults(),...JSON.parse(text),revision:String(r.blob.etag).replace(/^W\//,'')};readUntil=Date.now()+5000;return readCache}
+
+
+const VPATH='studybull-visitors-v1.json';
+async function readVisitors(){const r=await get(VPATH,{access:'private',useCache:false});if(!r)return {counter:0,visitors:{},revision:null};const d=JSON.parse(await new Response(r.stream).text());return {counter:Number(d.counter)||0,visitors:d.visitors&&typeof d.visitors==='object'&&!Array.isArray(d.visitors)?d.visitors:{},revision:String(r.blob.etag).replace(/^W\//,'')}}
+async function saveVisitors(state,current){const {revision:_r,...stored}=state;const result=await put(VPATH,JSON.stringify(stored),{access:'private',contentType:'application/json',addRandomSuffix:false,allowOverwrite:Boolean(current.revision),...(current.revision?{ifMatch:current.revision}:{}),cacheControlMaxAge:0});return {...state,revision:String(result.etag).replace(/^W\//,'')}}
+async function mutateVisitors(fn){let current=await readVisitors();for(let a=0;;a++){const state={counter:current.counter,visitors:current.visitors};fn(state);try{return await saveVisitors(state,current)}catch(e){if(a>=2||!(e instanceof BlobPreconditionFailedError||String(e.message).includes('already exists')))throw e;current=await readVisitors()}}}
+function trimVisitors(s){const ids=Object.keys(s.visitors);if(ids.length<=5000)return;ids.sort((a,b)=>String(s.visitors[a].lastSeen||'').localeCompare(String(s.visitors[b].lastSeen||'')));for(const id of ids.slice(0,ids.length-4500))delete s.visitors[id]}
+const EVENT_TYPES=new Set(['visit','view','test-start','test-done','note','link']);
+function cleanTrackEvents(list){if(!Array.isArray(list))return [];return list.slice(0,20).map(e=>({at:cleanDate(e?.at)||new Date().toISOString(),type:EVENT_TYPES.has(e?.type)?e.type:'view',detail:optionalText(e?.detail,140)}))}
+function applyTrackEvents(v,events,sec,now){if(!Array.isArray(v.events))v.events=[];if(!v.pages||typeof v.pages!=='object')v.pages={};let visits=0;for(const e of events){if(e.type==='visit')visits++;else if(e.type==='view'){const p=e.detail.slice(0,120)||'home';if(v.pages[p]===undefined&&Object.keys(v.pages).length>=60)continue;v.pages[p]=(v.pages[p]||0)+1}v.events.push(e)}v.events=v.events.slice(-60);v.visits=Math.min(100000,(Number(v.visits)||0)+visits);v.totalSec=Math.min(10000000,(Number(v.totalSec)||0)+sec);v.lastSeen=now}
+function registerVisitor(s,{vid,source,device,ref,now}){const existing=s.visitors[vid];if(existing)return existing.code;s.counter=(Number(s.counter)||0)+1;const code=source+'-'+device+String(s.counter).padStart(6,'0');const refOk=/^[a-z]{2}-[xyz]\d{6}$/.test(ref)&&ref!==code&&Object.values(s.visitors).some(x=>x.code===ref)?ref:'';s.visitors[vid]={code,source,device,ref:refOk,createdAt:now,lastSeen:now,visits:1,totalSec:0,pages:{},events:[{at:now,type:'visit',detail:'First visit'}]};trimVisitors(s);return code}
 
 const idOk=s=>typeof s==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(s);
 function text(v,name,min,max){v=String(v??'').trim();if(v.length<min||v.length>max)throw Error(`${name} must be ${min}-${max} characters.`);return v}
@@ -82,10 +93,12 @@ try{
  if(req.method==='GET'){
   if(action==='session')return send(res,200,{authenticated:Boolean(session(req)),sessionHours:12});
   if(action==='admin'){if(!session(req))return send(res,401,{error:'Owner login required.'});return send(res,200,adminData(await read()))}
+  if(action==='visitors'){if(!session(req))return send(res,401,{error:'Owner login required.'});const d=await readVisitors();const list=Object.values(d.visitors).map(v=>({code:v.code,source:v.source,device:v.device,ref:v.ref||'',createdAt:v.createdAt,lastSeen:v.lastSeen,visits:v.visits||0,totalSec:v.totalSec||0,pages:Object.keys(v.pages||{}).length}));list.sort((a,b)=>String(b.lastSeen).localeCompare(String(a.lastSeen)));return send(res,200,{counter:d.counter,total:list.length,visitors:list})}
+  if(action==='visitor'){if(!session(req))return send(res,401,{error:'Owner login required.'});const d=await readVisitors();const code=String(req.query?.id||'');const v=Object.values(d.visitors).find(x=>x.code===code);if(!v)return send(res,404,{error:'Visitor not found.'});return send(res,200,v)}
   if(action==='test'){const d=await read(),test=(d.mocks||[]).find(m=>m.id===String(req.query?.id||'')&&m.active!==false);if(!test)return send(res,404,{error:'Test not found.'});return send(res,200,publicTest(test))}
   const data=await read();if(data.revision&&req.query?.known===data.revision)return send(res,200,{unchanged:true,revision:data.revision});return send(res,200,publicData(data))
  }
- if(!origin||!ORIGINS.has(origin))return send(res,403,{error:'Use the StudyBull website.'});if(req.headers['sec-fetch-site']&&req.headers['sec-fetch-site']!=='same-origin'&&!['https://studybull.qd.je','https://www.studybull.qd.je'].includes(origin))return send(res,403,{error:'Same-origin requests only.'});if(!String(req.headers['content-type']||'').startsWith('application/json'))return send(res,415,{error:'JSON required.'});const body=typeof req.body==='string'?JSON.parse(req.body):req.body;if(Buffer.byteLength(JSON.stringify(body||{}))>1800000)return send(res,413,{error:'Request too large.'});
+ if(!origin||!ORIGINS.has(origin))return send(res,403,{error:'Use the StudyBull website.'});if(req.headers['sec-fetch-site']&&req.headers['sec-fetch-site']!=='same-origin'&&!['https://studybull.qd.je','https://www.studybull.qd.je'].includes(origin))return send(res,403,{error:'Same-origin requests only.'});const ct=String(req.headers['content-type']||'');if(!ct.startsWith('application/json')&&!(action==='track'&&ct.startsWith('text/plain')))return send(res,415,{error:'JSON required.'});const body=typeof req.body==='string'?JSON.parse(req.body):req.body;if(Buffer.byteLength(JSON.stringify(body||{}))>1800000)return send(res,413,{error:'Request too large.'});
  if(req.method==='POST'&&action==='submit-test'){
   if(publicLimited(req,40)){res.setHeader('Retry-After','900');return send(res,429,{error:'Too many attempts. Try again later.'})}
   const d=await read(),test=(d.mocks||[]).find(m=>m.id===String(body?.id||'')&&m.active!==false);if(!test)return send(res,404,{error:'Test not found.'});const answers=Array.isArray(body?.answers)?body.answers:[];const review=test.questions.map((q,i)=>{const chosen=Number(answers[i]);return {id:q.id,chosen:Number.isInteger(chosen)?chosen:null,answer:q.answer,correct:chosen===q.answer,explanation:q.explanation||''}});const score=review.filter(q=>q.correct).length;return send(res,200,{score,total:test.questions.length,review})
@@ -94,7 +107,29 @@ try{
   if(publicLimited(req,10)){res.setHeader('Retry-After','900');return send(res,429,{error:'Too many messages. Try again later.'})}
   const current=await read(true);const state=adminData(current);state.feedback=[{id:crypto.randomUUID(),name:optionalText(body?.name,100),message:text(body?.message,'Feedback message',1,1000),status:'new',createdAt:new Date().toISOString()},...(current.feedback||[])].slice(0,300);state.activityLogs=current.activityLogs||[];state.loginHistory=current.loginHistory||[];state.updatedAt=new Date().toISOString();const saved=await saveState(state,current);return send(res,200,{ok:true,revision:saved.revision})
  }
+ if(req.method==='POST'&&action==='track'){
+  if(publicLimited(req,120)){res.setHeader('Retry-After','900');return send(res,429,{error:'Too many events. Try again later.'})}
+  const vid=String(body?.vid||'');if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(vid))return send(res,400,{error:'Invalid visitor.'});
+  const now=new Date().toISOString();
+  if(body?.register===true){
+   const source=['tg','wa','sh','gg','wb'].includes(body?.source)?body.source:'wb';
+   const device=['x','y','z'].includes(body?.device)?body.device:'y';
+   const ref=optionalText(body?.ref,40);
+   let code='';await mutateVisitors(s=>{code=registerVisitor(s,{vid,source,device,ref,now})});
+   return send(res,200,{code})
+  }
+  const events=cleanTrackEvents(body?.events);const sec=Math.min(600,Math.max(0,Math.round(Number(body?.sec)||0)));
+  if(!events.length&&!sec)return send(res,200,{ok:true});
+  let known=false;await mutateVisitors(s=>{const v=s.visitors[vid];if(!v)return;known=true;applyTrackEvents(v,events,sec,now);trimVisitors(s)});
+  return send(res,200,{ok:true,known})
+ }
  if(!OWNER_ORIGINS.has(origin))return send(res,403,{error:'Use the StudyBull owner panel.'});if(req.headers['sec-fetch-site']&&req.headers['sec-fetch-site']!=='same-origin')return send(res,403,{error:'Same-origin requests only.'});
+  if(req.method==='POST'&&action==='visitor-delete'){
+  if(!session(req))return send(res,401,{error:'Owner login required.'});
+  const code=text(body?.code,'Visitor code',1,40);let removed=false;
+  await mutateVisitors(s=>{for(const [id,v] of Object.entries(s.visitors))if(v.code===code){delete s.visitors[id];removed=true}});
+  return send(res,200,{ok:true,removed})
+ }
  if(req.method==='POST'&&action==='login'){if(limited(req)){res.setHeader('Retry-After','900');return send(res,429,{error:'Too many login attempts. Try again in 15 minutes.'})}await new Promise(r=>setTimeout(r,700));if(!body||typeof body.password!=='string'||body.password.length>256||!equal(body.password,config))return send(res,401,{error:'Incorrect owner password.'});const payload=String(Date.now()+43200000)+'.'+crypto.randomBytes(18).toString('base64url');cookie(res,payload+'.'+sign(payload),43200);
   try{const current=await read(true),state=adminData(current);state.loginHistory=addLog(current.loginHistory,'owner-login','Owner panel login');state.activityLogs=current.activityLogs||[];state.updatedAt=new Date().toISOString();await saveState(state,current)}catch(e){console.error('Login history save skipped',e.name)}
   return send(res,200,{ok:true})}
