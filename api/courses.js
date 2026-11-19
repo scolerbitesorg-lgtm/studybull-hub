@@ -2,8 +2,8 @@ import crypto from 'node:crypto';
 import {get,put,BlobPreconditionFailedError} from '@vercel/blob';
 
 const PATH='studybull-courses-v1.json';
-const ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull.qd.je','https://www.studybull.qd.je','https://admin.studybull.qd.je']);
-const OWNER_ORIGINS=new Set(['https://studybull-hub.vercel.app','https://admin.studybull.qd.je']);
+const ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtm.vercel.app','https://studybull.qd.je','https://www.studybull.qd.je','https://admin.studybull.qd.je']);
+const OWNER_ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtm.vercel.app','https://admin.studybull.qd.je']);
 const COOKIE='sb_owner_v1';
 const attempts=new Map();
 const publicAttempts=new Map();
