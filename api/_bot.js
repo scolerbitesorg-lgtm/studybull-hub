@@ -50,12 +50,12 @@ const isOwner=async id=>{if(_own)return _own===id;const o=await rd(OWN);if(o&&o.
 async function userStatus(id){const u=await rd(ukey(id));if(!u)return {label:'no record',u:null};return {u,label:u.banned?'🚫 banned':u.removed?'🔒 removed':(u.member===false?'🚪 left':'✅ member')}}
 async function panel(chat,mid){
   const [st,x0,chs]=await Promise.all([settings(),rd(IDX),channels()]);const x=x0||{u:{}};const ids=Object.keys(x.u);const started=ids.filter(i=>x.u[i].s).length;
-  const text=`🛠 <b>StudyBull Admin</b>\n\nGate: ${st.paused?'🔴 <b>PAUSED</b> (everyone has access)':'🟢 <b>LIVE</b>'}\nShows: <b>${st.mode==='every'?'every time the site opens':'first time only'}</b>\nTelegram login on site: <b>${st.login?'ON':'OFF'}</b>\nDevice recognition (no bot for known phones): <b>${st.match===false?'OFF':'ON'}</b>\nRequired channels: <b>${chs.length}</b>\nUsers: <b>${ids.length}</b> · started bot: <b>${started}</b>`;
+  const text=`🛠 <b>StudyBull Admin</b>\n\nGate: ${st.paused?'🔴 <b>PAUSED</b> (everyone has access)':'🟢 <b>LIVE</b>'}\nShows: <b>${st.mode==='every'?'every time the site opens':'first time only'}</b>\nTelegram login on site: <b>${st.login?'ON':'OFF'}</b>\nDevice recognition (no bot for known phones): <b>${st.match===true?'ON':'OFF'}</b>\nRequired channels: <b>${chs.length}</b>\nUsers: <b>${ids.length}</b> · started bot: <b>${started}</b>`;
   await edit(chat,mid,text,kb([
     [{text:st.paused?'🟢 Turn gate LIVE':'🔴 Pause gate',callback_data:'a:t'}],
     [{text:st.mode==='every'?'🔁 Mode: EVERY visit (tap for first-time only)':'1️⃣ Mode: FIRST time only (tap for every visit)',callback_data:'a:gm'}],
     [{text:st.login?'🔑 Telegram login: ON (tap to turn off)':'🔑 Telegram login: OFF (tap to turn on)',callback_data:'a:gl'}],
-    [{text:st.match===false?'📱 Device recognition: OFF (tap to turn on)':'📱 Device recognition: ON (tap to turn off)',callback_data:'a:dm'}],
+    [{text:st.match===true?'📱 Device recognition: ON (tap to turn off)':'📱 Device recognition: OFF (tap to turn on)',callback_data:'a:dm'}],
     [{text:'📢 Channels ('+chs.length+')',callback_data:'a:ch'}],
     [{text:'📊 Stats',callback_data:'a:s'},{text:'👥 Users',callback_data:'a:u:0'}],
     [{text:'🔎 Search',callback_data:'a:f'},{text:'🚫 Banned',callback_data:'a:b:0'}],
@@ -136,7 +136,7 @@ async function adminCb(chat,mid,data,from){
   if(k==='p'){await setState();return panel(chat,mid)}
   if(k==='t'){const s=await settings();s.paused=!s.paused;await saveSettings(s);return panel(chat,mid)}
   if(k==='gm'){const s2=await settings();s2.mode=s2.mode==='every'?'once':'every';await saveSettings(s2);return panel(chat,mid)}
-  if(k==='dm'){const s2=await settings();s2.match=s2.match===false;await saveSettings(s2);return panel(chat,mid)}
+  if(k==='dm'){const s2=await settings();s2.match=s2.match!==true;await saveSettings(s2);return panel(chat,mid)}
   if(k==='gl'){const s2=await settings();s2.login=!s2.login;await saveSettings(s2);return panel(chat,mid)}
   if(k==='ch')return chScreen(chat,mid);
   if(k==='cha'){await setState({pm:mid,mode:'addch'});return edit(chat,mid,'➕ <b>Add a channel</b>\n1. Open the channel > Administrators > add this bot as admin with "Invite users".\n2. Send me the channel @username, or forward any post from it.\n\n(/cancel to stop)')}
