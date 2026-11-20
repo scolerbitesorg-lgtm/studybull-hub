@@ -127,3 +127,9 @@ export async function redeem(dev,code,maxD,sid,fp){
 export async function claimCode(){const o=await rd(OWN);if(o&&o.id)return {error:'owner already set'};const code=crypto.randomBytes(6).toString('hex');await wr('gate/claim.json',{h:hash(code),exp:now()+86400});return {code}}
 export async function setup(base){const c=cfg();return tg('setWebhook',{url:base+'/api/gate?action=hook',secret_token:c.secret,allowed_updates:['message','chat_member','callback_query'],drop_pending_updates:true})}
 export {handleUpdate,setMenu} from './_bot.js';
+
+// Short permanent browser ID (rs-xxxxxx). Maps to one browser id; used to link that browser to the sender's Telegram account.
+const BA='abcdefghjkmnpqrstuvwxyz23456789',bk=id=>`gate/bid-${id}.json`;
+const mkbid=(dev,salt)=>{const h=crypto.createHash('sha256').update('bid|'+salt+'|'+dev).digest();let s='';for(let i=0;i<6;i++)s+=BA[h[i]%31];return 'rs-'+s};
+export async function ensureBid(dev){if(!okId(dev))return '';for(let s=0;s<6;s++){const id=mkbid(dev,s),e=await rd(bk(id));if(!e){await wr(bk(id),{dev,at:now()});return id}if(e.dev===dev)return id}return ''}
+export async function bidDev(id){const e=await rd(bk(String(id||'').toLowerCase()));return (e&&e.dev)||''}
