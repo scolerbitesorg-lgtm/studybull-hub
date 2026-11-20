@@ -82,7 +82,7 @@ async function noteSig(d,dev,sig){if(d.sg===sig&&now()-(d.sgAt||0)<259200)return
   await Promise.all([wr(k,{t,at:now()}),wr(dkey(dev),{...d,sg:sig,sgAt:now()})])}
 export async function recognize(dev,sid,sig,maxD){
   if(!okId(dev)||!sig)return {ok:false,reason:'none'};
-  if((await settings()).match===false)return {ok:false,reason:'off'};
+  if((await settings()).match!==true)return {ok:false,reason:'off'};
   const e=await rd(sigk(sig));if(!e||!e.t||!e.t.length||now()-(e.at||0)>2592000)return {ok:false,reason:'norecognize'};
   const good=[];
   for(const tgid of e.t){const u=await rd(ukey(tgid));if(!u||u.banned||u.removed)continue;const m=await isMember(tgid);if(m.ok&&m.member)good.push(tgid)}
