@@ -201,3 +201,15 @@ body .card .body{padding-top:34px}
 body .card .body h3{margin-top:0}
 @media(min-width:751px){body .homecube{min-height:190px}body .homecube h2{margin-top:70px}}
 body .card .save,body .card .save{left:12px!important;right:auto!important;top:auto!important;bottom:12px!important}
+
+.llist{display:flex;flex-direction:column;gap:10px;grid-column:1/-1;width:100%}
+.lrow{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e3e8ef;border-radius:16px;padding:12px 14px;text-decoration:none;color:inherit;box-shadow:0 1px 3px rgba(15,23,42,.05)}
+.lrow .lico{flex:0 0 44px;height:44px;border-radius:12px;background:#eaf1ff;color:#2563eb;display:grid;place-items:center}
+.lrow .lico svg{width:22px;height:22px}
+.lrow .ltxt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.lrow strong{font-size:15px;line-height:1.25}
+.lrow small{color:#64748b;font-size:12.5px}
+.lrow .lcnt{color:#2563eb;font-size:12px;white-space:nowrap}
+.lrow .lcnt b{font-size:15px}
+.lrow .lgo{flex:0 0 30px;height:30px;border-radius:50%;background:#eaf1ff;color:#2563eb;display:grid;place-items:center;font-size:20px}
+body .grid:has(>.llist){display:block}
