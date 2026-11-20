@@ -1,6 +1,8 @@
-import {cfg,enabled,start,check,handleUpdate,setup,redeem,claimCode,rd,grant,loginDevice,settings,saveSettings,setMenu} from './_gate.js';
+import {cfg,enabled,start,check,handleUpdate,setup,redeem,claimCode,rd,grant,recognize,loginDevice,settings,saveSettings,setMenu} from './_gate.js';
 const ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtms-projects.vercel.app','https://studybull.qd.je','https://www.studybull.qd.je']);
 const send=(res,s,d)=>{res.statusCode=s;res.setHeader('Content-Type','application/json; charset=utf-8');res.end(JSON.stringify(d))};
+const sigOf=req=>{const fp=String(req.headers['x-gate-fp']||'');if(!/^[a-z0-9]{8,40}$/.test(fp))return '';const ip=String(req.headers['x-forwarded-for']||req.socket?.remoteAddress||'').split(',')[0].trim();
+  const pre=ip.includes(':')?ip.split(':').slice(0,4).join(':'):ip.split('.').slice(0,3).join('.');return pre?fp+'|'+pre:''};
 const sidOf=req=>String(req.headers['x-gate-session']||'');
 export const bearer=req=>{const h=String(req.headers.authorization||'');return h.startsWith('Bearer ')?h.slice(7):''};
 export default async function handler(req,res){
@@ -21,13 +23,16 @@ export default async function handler(req,res){
     if(action==='claimcode'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});return send(res,200,await claimCode())}
     if(action==='info'){const st=enabled()?await settings():{};return send(res,200,{enabled:enabled(),link:cfg().link,name:process.env.GATE_CHANNEL_NAME||'StudyBull',mode:st.mode==='every'?'every':'once',login:Boolean(st.login),botId:st.login?cfg().token.split(':')[0]:'',channels:(st.channels||[]).map(c=>({name:c.name,link:c.link}))})}
     if(!enabled())return send(res,200,{enabled:false,ok:true});
-    if(action==='status')return send(res,200,{enabled:true,...await check(bearer(req),sidOf(req))});
+    if(action==='status')return send(res,200,{enabled:true,...await check(bearer(req),sidOf(req),false,sigOf(req))});
     if(action==='redeem'&&req.method==='POST'){
       if(!o||!ORIGINS.has(o))return send(res,403,{error:'Use the StudyBull website.'});
       const b=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});return send(res,200,await redeem(bearer(req),b.code,undefined,sidOf(req),String(req.headers['x-gate-fp']||'')))}
     if(action==='grant'&&req.method==='POST'){
       if(!o||!ORIGINS.has(o))return send(res,403,{error:'Use the StudyBull website.'});
       return send(res,200,await grant(bearer(req),sidOf(req)))}
+    if(action==='recognize'&&req.method==='POST'){
+      if(!o||!ORIGINS.has(o))return send(res,403,{error:'Use the StudyBull website.'});
+      return send(res,200,await recognize(bearer(req),sidOf(req),sigOf(req)))}
     if(action==='tglogin'&&req.method==='POST'){
       if(!o||!ORIGINS.has(o))return send(res,403,{error:'Use the StudyBull website.'});
       if(!(await settings()).login)return send(res,200,{ok:false,reason:'off'});
