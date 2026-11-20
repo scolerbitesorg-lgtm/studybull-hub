@@ -105,6 +105,7 @@ async function gatePage(token,reason,instant){
     const botFlow=async()=>{stt.textContent='Opening Telegram...';try{if(!gs||!gs.url)gs=await prep();if(!gs||!gs.url)throw Error();tgOpen(gs.url);stt.textContent='Press Start in Telegram, then come back. Checking...'}catch{stt.textContent='Could not start verification. Try again.'}};
     vf.onclick=async()=>{acted=true;
       if(linked){stt.textContent='Checking...';try{const r=await(await gfetch('/api/gate?action=grant',{method:'POST'})).json();if(r.ok){gateUnlock();return}}catch{}}
+      stt.textContent='Checking your device...';try{const r=await(await gfetch('/api/gate?action=recognize',{method:'POST'})).json();if(r.ok){gateUnlock();return}}catch{}
       if(info.login&&info.botId&&window.Telegram&&window.Telegram.Login){stt.textContent='Confirm in the Telegram window...';
         try{window.Telegram.Login.auth({bot_id:Number(info.botId),request_access:'write'},async u=>{
           if(!u){botFlow();return}
