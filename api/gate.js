@@ -1,3 +1,4 @@
+import {list,del} from '@vercel/blob';
 import {cfg,enabled,start,check,handleUpdate,setup,redeem,claimCode,rd,grant,recognize,loginDevice,settings,saveSettings,setMenu} from './_gate.js';
 const ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtms-projects.vercel.app','https://studybull.qd.je','https://www.studybull.qd.je']);
 const send=(res,s,d)=>{res.statusCode=s;res.setHeader('Content-Type','application/json; charset=utf-8');res.end(JSON.stringify(d))};
@@ -19,6 +20,12 @@ export default async function handler(req,res){
       if(!enabled()||(bearer(req)!==cfg().secret&&bearer(req)!==cfg().token))return send(res,403,{error:'forbidden'});
       return send(res,200,await setup('https://'+req.headers.host))}
     if(action==='setmenu'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});const o=await rd('gate/owner.json');await setMenu(o&&o.id);return send(res,200,{ok:true})}
+    if(action==='purgesig'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});const dry=String(req.query?.dry)!=='0';
+      const all=async pre=>{let c,o=[];do{const r=await list({prefix:pre,cursor:c,limit:1000});o.push(...r.blobs);c=r.hasMore?r.cursor:undefined}while(c);return o};
+      const sigs=await all('gate/sig-');const devs=await all('gate/dev-');let withSig=0,cleaned=0;
+      for(const b of devs){const d=await rd(b.pathname);if(d&&(d.sg!==undefined||d.sgAt!==undefined)){withSig++;if(!dry){delete d.sg;delete d.sgAt;await wr(b.pathname,d);cleaned++}}}
+      if(!dry&&sigs.length)await del(sigs.map(b=>b.url));
+      return send(res,200,{dry,sigFiles:sigs.length,deviceRecords:devs.length,deviceRecordsWithSig:withSig,cleaned,deleted:dry?0:sigs.length})}
     if(action==='setlogin'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});const st=await settings();st.login=String(req.query?.on)==='1';await saveSettings(st);return send(res,200,{login:st.login})}
     if(action==='claimcode'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});return send(res,200,await claimCode())}
     if(action==='info'){const st=enabled()?await settings():{};return send(res,200,{enabled:enabled(),link:cfg().link,name:process.env.GATE_CHANNEL_NAME||'StudyBull',mode:st.mode==='every'?'every':'once',login:Boolean(st.login),botId:st.login?cfg().token.split(':')[0]:'',channels:(st.channels||[]).map(c=>({name:c.name,link:c.link}))})}
