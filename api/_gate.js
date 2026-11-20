@@ -56,7 +56,7 @@ export const invDevice=async link=>{const v=await rd(`gate/inv-${hash(link)}.jso
 export async function start(dev,origin){if(!okId(dev))throw Error('bad device');const code=crypto.randomBytes(9).toString('base64url');await wr(pkey(code),{dev,origin:origin||'',exp:now()+900});
   let join='';try{join=await inviteFor(dev,origin)}catch{}
   return {code,url:`https://t.me/${cfg().bot}?start=${code}`,join}}
-export async function check(dev,sid,noSess){
+export async function check(dev,sid,noSess,sig){
   if(!okId(dev))return {ok:false,reason:'none'};
   const d=await rd(dkey(dev));if(!d)return {ok:false,reason:'none'};
   const u=await rd(ukey(d.tg));if(!u)return {ok:false,reason:'none'};
@@ -71,8 +71,26 @@ export async function check(dev,sid,noSess){
     else return {ok:false,reason:'error'}; // fail closed
   }
   if(!noSess&&(await settings()).mode==='every'&&!(await hasGrant(dev,sid)))return {ok:false,reason:'session'};
+  if(sig)await noteSig(d,dev,sig).catch(()=>{});
   return {ok:true};
 }
+// Device recognition: a browser that linked once leaves a signature (device fingerprint + network prefix).
+// Another browser on the same phone and network with the same signature can be recognised without the bot.
+const sigk=sig=>`gate/sig-${hash('sig|'+sig)}.json`;
+async function noteSig(d,dev,sig){if(d.sg===sig&&now()-(d.sgAt||0)<259200)return;
+  const k=sigk(sig);const e=(await rd(k))||{t:[]};const t=[d.tg,...(e.t||[]).filter(x=>x!==d.tg)].slice(0,5);
+  await Promise.all([wr(k,{t,at:now()}),wr(dkey(dev),{...d,sg:sig,sgAt:now()})])}
+export async function recognize(dev,sid,sig,maxD){
+  if(!okId(dev)||!sig)return {ok:false,reason:'none'};
+  if((await settings()).match===false)return {ok:false,reason:'off'};
+  const e=await rd(sigk(sig));if(!e||!e.t||!e.t.length||now()-(e.at||0)>2592000)return {ok:false,reason:'norecognize'};
+  const good=[];
+  for(const tgid of e.t){const u=await rd(ukey(tgid));if(!u||u.banned||u.removed)continue;const m=await isMember(tgid);if(m.ok&&m.member)good.push(tgid)}
+  if(good.length!==1)return {ok:false,reason:good.length?'ambiguous':'norecognize'};
+  await linkDevice(good[0],dev,maxD);
+  if(okId(sid))await wr(gkey(dev,sid),{exp:now()+43200});
+  const d=await rd(dkey(dev));if(d)await wr(dkey(dev),{...d,sg:sig,sgAt:now()});
+  return {ok:true}}
 const gkey=(dev,sid)=>`gate/sess-${hash(dev+':'+sid)}.json`;
 async function hasGrant(dev,sid){if(!okId(sid))return false;const g=await rd(gkey(dev,sid));return !!(g&&g.exp>now())}
 // "every visit" mode: one grant per page load (session id), lasts 12h so other open tabs keep working
