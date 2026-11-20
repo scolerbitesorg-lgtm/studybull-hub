@@ -8,7 +8,7 @@ const typing=chat=>tg('sendChatAction',{chat_id:chat,action:'typing'}).catch(()=
 const kb=rows=>({reply_markup:{inline_keyboard:rows}});
 const bar=(n,t=5)=>'▰'.repeat(n)+'▱'.repeat(t-n);
 const DEFAULT_WELCOME='👋 <b>Welcome to StudyBull</b>\nJoin our channel to unlock Batches and course videos. It takes a few seconds.';
-const siteBtn=(base,code)=>{const site=cfg().site||base;return site?[[{text:'🚀 Open StudyBull',url:`${site}/#unlock=${code}`}]]:[]};
+const siteBtn=(base,code,origin)=>{const site=origin||cfg().site||'https://studybull.qd.je';return site?[[{text:'🚀 Open StudyBull',url:`${site}/#unlock=${code}`}]]:[]};
 const joinRows=()=>{const c=cfg();return [...(c.link?[[{text:'📢 Join channel',url:c.link}]]:[]),[{text:'🔄 I have joined, Verify',callback_data:'v'}]]};
 async function isBanned(uid){const u=await rd(ukey(uid));return !!(u&&u.banned)}
 // staged, edit-in-place verification
@@ -123,9 +123,9 @@ export async function handleUpdate(up,base){
     if(member!==was)await logEv(member?'join':'leave',uid,usr.first_name).catch(()=>{});
     let u=await rd(ukey(uid));if(u){u.member=member;u.checkedAt=now();await wr(ukey(uid),u)}
     const link=cm.invite_link?.invite_link;
-    if(member&&!was&&link){const dev=await invDevice(link);
+    if(member&&!was&&link){const inv=await invDevice(link),dev=inv&&inv.dev;
       if(dev&&!(u&&u.banned)){await touch(usr,{src:'invite'});const code=await userCode(uid,false,usr);await linkDevice(uid,dev);
-        const x=(await rd(IDX))||{u:{}};if(x.u[uid]&&x.u[uid].s){await say(uid,'✅ <b>Verified automatically!</b>\nThanks for joining. Your StudyBull Batches are unlocked on the browser you came from.',kb(siteBtn(base,code)))}}}
+        const x=(await rd(IDX))||{u:{}};if(x.u[uid]&&x.u[uid].s){await say(uid,'✅ <b>Verified automatically!</b>\nThanks for joining. Your StudyBull Batches are unlocked on the browser you came from.',kb(siteBtn(base,code,inv.origin)))}}}
     return}
   const m=up.message;if(!m||m.chat?.type!=='private'||!m.from)return;
   const chat=m.chat.id,t=String(m.text||'');
@@ -155,4 +155,4 @@ export async function handleUpdate(up,base){
   if(!mm.member){await edit(chat,mid,'😕 <b>You have not joined yet</b>\nJoin the channel first, then tap Verify.',kb(joinRows()));return}
   await edit(chat,mid,`🔐 <b>Linking your browser</b>\n${bar(4)}`);
   await linkDevice(m.from.id,p.dev);await wr(pkey(code),{dev:p.dev,exp:0});const uc=await userCode(m.from.id,false,m.from);await sleep(400);
-  await edit(chat,mid,'✅ <b>Verified!</b>\nGo back to the StudyBull site, it unlocks by itself. You can close this chat.',kb(siteBtn(base,uc)))}
+  await edit(chat,mid,'✅ <b>Verified!</b>\nGo back to the StudyBull site, it unlocks by itself. You can close this chat.',kb(siteBtn(base,uc,p.origin)))}
