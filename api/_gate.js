@@ -40,13 +40,13 @@ export async function linkDevice(tgid,dev,maxD){
   const u=(await rd(ukey(tgid)))||{tg:tgid,devices:{}};u.member=true;u.checkedAt=now();u.devices=u.devices||{};u.devices[hash(dev)]=now();
   const ids=Object.keys(u.devices).sort((a,b)=>u.devices[b]-u.devices[a]);for(const old of ids.slice(maxD||cfg().maxDevices))delete u.devices[old];
   await wr(ukey(tgid),u);await wr(dkey(dev),{tg:tgid,at:now()});return u}
-async function inviteFor(dev){
-  const k=`gate/pj-${hash(dev)}.json`;const p=await rd(k);if(p&&p.exp>now()+900)return p.link;
+async function inviteFor(dev,origin){
+  const k=`gate/pj-${hash(dev)}.json`;const p=await rd(k);if(p&&p.exp>now()+900&&p.origin===(origin||''))return p.link;
   const j=await tg('createChatInviteLink',{chat_id:cfg().channel,name:('d'+hash(dev)).slice(0,16),expire_date:now()+86400,member_limit:1});
-  if(!j.ok)return '';const link=j.result.invite_link;await wr(k,{link,exp:now()+86400});await wr(`gate/inv-${hash(link)}.json`,{dev,exp:now()+86400});return link}
-export const invDevice=async link=>{const v=await rd(`gate/inv-${hash(link)}.json`);return v&&v.exp>now()?v.dev:null};
-export async function start(dev){if(!okId(dev))throw Error('bad device');const code=crypto.randomBytes(9).toString('base64url');await wr(pkey(code),{dev,exp:now()+900});
-  let join='';try{join=await inviteFor(dev)}catch{}
+  if(!j.ok)return '';const link=j.result.invite_link;await wr(k,{link,origin:origin||'',exp:now()+86400});await wr(`gate/inv-${hash(link)}.json`,{dev,origin:origin||'',exp:now()+86400});return link}
+export const invDevice=async link=>{const v=await rd(`gate/inv-${hash(link)}.json`);return v&&v.exp>now()?v:null};
+export async function start(dev,origin){if(!okId(dev))throw Error('bad device');const code=crypto.randomBytes(9).toString('base64url');await wr(pkey(code),{dev,origin:origin||'',exp:now()+900});
+  let join='';try{join=await inviteFor(dev,origin)}catch{}
   return {code,url:`https://t.me/${cfg().bot}?start=${code}`,join}}
 export async function check(dev){
   if(!okId(dev))return {ok:false,reason:'none'};
