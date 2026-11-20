@@ -93,7 +93,7 @@ async function gatePage(token,reason,instant){
   let info=gjs('sb_gi')||{};if(!reason)reason=localStorage.getItem('sb_gr')||'';let gs=null,dead=false,linked=false,acted=false;
   const ensureTg=()=>{if(info.login&&!window.Telegram&&!document.getElementById('tgw')){const t=document.createElement('script');t.id='tgw';t.async=true;t.src='https://telegram.org/js/telegram-widget.js?22';document.head.appendChild(t)}};ensureTg();
   const alive=()=>!dead&&document.getElementById('gateov')===o&&(token===undefined||token===loadToken);
-  const msg=()=>reason==='left'?'You left our channel, so access is locked. Join again to unlock.':reason==='removed'?'Your access was removed by the admin. Tap Verify, then ask for access again in the bot.':reason==='banned'?'Access is blocked for this account. Tap Verify to send a review request in the bot.':'Batches and course videos are for members of our Telegram channel.';
+  const msg=()=>reason==='otherdevice'?'That access link belongs to another browser. Tap Verify to get your own.':reason==='expired'?'That access link expired. Tap Verify to get a new one.':reason==='left'?'You left our channel, so access is locked. Join again to unlock.':reason==='removed'?'Your access was removed by the admin. Tap Verify, then ask for access again in the bot.':reason==='banned'?'Access is blocked for this account. Tap Verify to send a review request in the bot.':'Batches and course videos are for members of our Telegram channel.';
   const render=busy=>{o.innerHTML=window.sbGateCard(info,msg(),busy);bind()};
   const bind=()=>{
     const nt=o.querySelector('#gatenot'),jn=o.querySelector('#gatejoin'),vf=o.querySelector('#gateverify'),stt=o.querySelector('#gatestate');
