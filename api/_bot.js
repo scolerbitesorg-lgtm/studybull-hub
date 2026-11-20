@@ -12,11 +12,14 @@ const siteBtn=(base,code,origin)=>{const site=origin||cfg().site||'https://study
 const joinRows=()=>{const c=cfg();return [...(c.link?[[{text:'📢 Join channel',url:c.link}]]:[]),[{text:'🔄 I have joined, Verify',callback_data:'v'}]]};
 async function isBanned(uid){const u=await rd(ukey(uid));return !!(u&&u.banned)}
 async function isRemoved(uid){const u=await rd(ukey(uid));return !!(u&&u.removed)}
-const REMOVED_MSG='🔒 <b>Your access was removed by the admin.</b>\nTo get access again, join the channel again with the Join button, then tap Verify.'
+const REMOVED_MSG=id=>`🔒 <b>Your web access was removed by the admin.</b>\n\nYour ID: <code>${id}</code>\nTap the button to ask for access again. The admin will review your request.`
+const BANNED_MSG=id=>`🚫 <b>Access is blocked</b> for this account.\n\nYour ID: <code>${id}</code>\nYou can send a request. The admin will review it.`
+const reqKb=(pending)=>kb([[pending?{text:'⏳ Request sent',callback_data:'rq'}:{text:'🔓 Get access again',callback_data:'rq'}]])
 // staged, edit-in-place verification
 async function verifyFlow(chat,uid,base,from,mid){
-  if(await isBanned(uid)){await edit(chat,mid,'🚫 <b>Access is blocked</b> for this account.');return}
-  if(await isRemoved(uid)){const mm0=await isMember(uid);if(!mm0.ok||mm0.member){await edit(chat,mid,REMOVED_MSG,kb(joinRows()));return}await edit(chat,mid,REMOVED_MSG,kb(joinRows()));return}
+  {const u0=await rd(ukey(uid));const pend=!!(u0&&u0.req==='pending');
+   if(u0&&u0.banned){await edit(chat,mid,BANNED_MSG(uid),reqKb(pend));return}
+   if(u0&&u0.removed){await edit(chat,mid,REMOVED_MSG(uid),reqKb(pend));return}}
   await typing(chat);
   const first=await edit(chat,mid,`🔍 <b>Checking your membership</b>\n${bar(1)}`);
   mid=mid||first?.result?.message_id;
@@ -30,12 +33,14 @@ async function verifyFlow(chat,uid,base,from,mid){
 async function welcome(chat,from,base){await touch(from,{s:true});const st=await settings();await say(chat,st.welcome?h(st.welcome):DEFAULT_WELCOME);await verifyFlow(chat,from.id,base,from)}
 const isOwner=async id=>{const o=await rd(OWN);return !!(o&&o.id&&o.id===id)};
 // ---- owner panel ----
-async function userStatus(id){const u=await rd(ukey(id));if(!u)return {label:'no record',u:null};return {u,label:u.banned?'🚫 banned':(u.member===false?'🚪 left':'✅ member')}}
+async function userStatus(id){const u=await rd(ukey(id));if(!u)return {label:'no record',u:null};return {u,label:u.banned?'🚫 banned':u.removed?'🔒 removed':(u.member===false?'🚪 left':'✅ member')}}
 async function panel(chat,mid){
   const st=await settings(),x=(await rd(IDX))||{u:{}};const ids=Object.keys(x.u);const started=ids.filter(i=>x.u[i].s).length;
-  const text=`🛠 <b>StudyBull Admin</b>\n\nGate: ${st.paused?'🔴 <b>PAUSED</b> (everyone has access)':'🟢 <b>LIVE</b>'}\nUsers: <b>${ids.length}</b> · started bot: <b>${started}</b>`;
+  const text=`🛠 <b>StudyBull Admin</b>\n\nGate: ${st.paused?'🔴 <b>PAUSED</b> (everyone has access)':'🟢 <b>LIVE</b>'}\nShows: <b>${st.mode==='every'?'every time the site opens':'first time only'}</b>\nTelegram login on site: <b>${st.login?'ON':'OFF'}</b>\nUsers: <b>${ids.length}</b> · started bot: <b>${started}</b>`;
   await edit(chat,mid,text,kb([
     [{text:st.paused?'🟢 Turn gate LIVE':'🔴 Pause gate',callback_data:'a:t'}],
+    [{text:st.mode==='every'?'🔁 Mode: EVERY visit (tap for first-time only)':'1️⃣ Mode: FIRST time only (tap for every visit)',callback_data:'a:gm'}],
+    [{text:st.login?'🔑 Telegram login: ON (tap to turn off)':'🔑 Telegram login: OFF (tap to turn on)',callback_data:'a:gl'}],
     [{text:'📊 Stats',callback_data:'a:s'},{text:'👥 Users',callback_data:'a:u:0'}],
     [{text:'🔎 Search',callback_data:'a:f'},{text:'🚫 Banned',callback_data:'a:b:0'}],
     [{text:'🕘 Recent',callback_data:'a:r'},{text:'⬇️ Export CSV',callback_data:'a:x'}],
@@ -92,6 +97,8 @@ async function adminCb(chat,mid,data,from){
   const p=data.split(':');const k=p[1];
   if(k==='p'){await setState();return panel(chat,mid)}
   if(k==='t'){const s=await settings();s.paused=!s.paused;await saveSettings(s);return panel(chat,mid)}
+  if(k==='gm'){const s2=await settings();s2.mode=s2.mode==='every'?'once':'every';await saveSettings(s2);return panel(chat,mid)}
+  if(k==='gl'){const s2=await settings();s2.login=!s2.login;await saveSettings(s2);return panel(chat,mid)}
   if(k==='s')return stats(chat,mid);
   if(k==='u')return userList(chat,mid,Number(p[2])||0,false);
   if(k==='b')return userList(chat,mid,Number(p[2])||0,true);
@@ -112,29 +119,45 @@ async function adminCb(chat,mid,data,from){
     for(const id of Object.keys(x.u).slice(0,100)){const u=await rd(ukey(id));if(!u)continue;const m=await isMember(Number(id));if(m.ok){u.member=m.member;u.checkedAt=now();await wr(ukey(id),u);n++;if(!m.member)l++}}
     return edit(chat,mid,`🔄 Checked <b>${n}</b> users, <b>${l}</b> not in the channel.`,kb(back))}
   const id=p[2];const u=id&&await rd(ukey(id));
-  if(k==='rv'||k==='bn'||k==='ub'){if(!u)return edit(chat,mid,'No record.',kb(back));if(k==='ub')u.banned=false;else{u.devices={};if(k==='bn')u.banned=true}await wr(ukey(id),u);return detail(chat,mid,id)}
-  if(k==='rm')return edit(chat,mid,`🗑 <b>Remove access?</b>\n<code>${h(id)}</code> will be signed out of every browser and kicked from the channel. They must join again to get access back. This does not ban them.`,kb([[{text:'✅ Yes, remove',callback_data:'a:rmy:'+id}],[{text:'✖️ Cancel',callback_data:'a:d:'+id}]]))
+  if(k==='rv'||k==='bn'||k==='ub'){if(!u)return edit(chat,mid,'No record.',kb(back));if(k==='ub'){u.banned=false;u.removed=false}else{u.devices={};if(k==='bn')u.banned=true}await wr(ukey(id),u);return detail(chat,mid,id)}
+  if(k==='rm')return edit(chat,mid,`🗑 <b>Remove access?</b>\n<code>${h(id)}</code> will be signed out of every browser and blocked from the website. They stay in the channel. They can send a request from the bot, and you approve or reject it.`,kb([[{text:'✅ Yes, remove',callback_data:'a:rmy:'+id}],[{text:'✖️ Cancel',callback_data:'a:d:'+id}]]))
   if(k==='rmy'){if(!u)return edit(chat,mid,'No record.',kb(back));
-    if(u.code)await wr(ckey(hash(u.code)),{tg:Number(id),off:true});delete u.code;u.devices={};u.member=false;u.removed=true;u.removedAt=now();await wr(ukey(id),u);
-    let kicked=false;try{const b=await tg('banChatMember',{chat_id:cfg().channel,user_id:Number(id),revoke_messages:false});if(b.ok){const ub=await tg('unbanChatMember',{chat_id:cfg().channel,user_id:Number(id),only_if_banned:true});kicked=ub.ok}}catch{}
-    await logEv('leave',Number(id),'removed by admin').catch(()=>{});
-    const note=kicked?'They were kicked from the channel and can join again.':'⚠️ Telegram did not let me kick them (they may be an admin or owner of the channel). Their access is cut anyway and Verify will not work until they leave and join again.';
-    return edit(chat,mid,`🗑 <b>Access removed</b> for <code>${h(id)}</code>.\n${note}`,kb([[{text:'⬅️ Users',callback_data:'a:u:0'}]]))}
+    if(u.code)await wr(ckey(hash(u.code)),{tg:Number(id),off:true});delete u.code;u.devices={};u.removed=true;u.removedAt=now();delete u.req;await wr(ukey(id),u);
+    await logEv('leave',Number(id),'web access removed by admin').catch(()=>{});
+    await say(id,'🔒 <b>Your web access was removed by the admin.</b>\nTap below to ask for access again.',reqKb(false)).catch(()=>{});
+    return edit(chat,mid,`🗑 <b>Access removed</b> for <code>${h(id)}</code>.\nAll browsers are signed out. They are still in the channel and can ask for access again from the bot.`,kb([[{text:'⬅️ Users',callback_data:'a:u:0'}]]))}
+  if(k==='ra'||k==='rj'){if(!u)return edit(chat,mid,'No record.',kb(back));
+    if(u.req!=='pending')return edit(chat,mid,'ℹ️ This request was already handled.',kb(back));
+    if(k==='ra'){u.removed=false;u.banned=false;u.req='approved';await wr(ukey(id),u);
+      await say(id,'✅ <b>Approved!</b>\nThe admin approved your request. Tap Verify to get web access again.',kb([[{text:'✅ Verify',callback_data:'v'}]])).catch(()=>{});
+      return edit(chat,mid,`✅ Approved <code>${h(id)}</code>. They were told to tap Verify.`,kb(back))}
+    u.req='rejected';await wr(ukey(id),u);await say(id,'❌ <b>Your request was not approved.</b>',undefined).catch(()=>{});
+    return edit(chat,mid,`❌ Rejected <code>${h(id)}</code>.`,kb(back))}
   if(k==='nc'){if(!u)return edit(chat,mid,'No record.',kb(back));await userCode(id,true);return detail(chat,mid,id)}
+}
+async function requestAccess(chat,from,mid){
+  const uid=from.id;const u=await rd(ukey(uid));
+  if(!u||(!u.banned&&!u.removed)){return verifyFlow(chat,uid,'',from,mid)}
+  if(u.req==='pending'){return edit(chat,mid,'⏳ <b>Your request is already with the admin.</b>\nYou will get a message when it is decided.\n\nYour ID: <code>'+uid+'</code>')}
+  u.req='pending';u.reqAt=now();await wr(ukey(uid),u);
+  await edit(chat,mid,'✅ <b>Request sent.</b>\nThe admin will review it. You will get a message here when it is decided.\n\nYour ID: <code>'+uid+'</code>');
+  const o=await rd(OWN);if(o&&o.id){const nm=h([from.first_name,from.last_name].filter(Boolean).join(' ')||'User')+(from.username?' @'+h(from.username):'');
+    await say(o.id,`📥 <b>Access request</b>\n${nm}\nID: <code>${uid}</code>\nStatus: ${u.banned?'🚫 banned':'🔒 access removed'}`,kb([[{text:'✅ Approve',callback_data:'a:ra:'+uid},{text:'❌ Reject',callback_data:'a:rj:'+uid}],[{text:'👤 Details',callback_data:'a:d:'+uid}]]))}
 }
 export async function handleUpdate(up,base){
   if(up.callback_query){const q=up.callback_query;await tg('answerCallbackQuery',{callback_query_id:q.id}).catch(()=>{});
     const chat=q.message?.chat?.id,mid=q.message?.message_id;if(!chat)return;
+    if(q.data==='rq'){await touch(q.from,{s:true});return requestAccess(chat,q.from,mid)}
     if(q.data==='v'){await touch(q.from,{s:true});return verifyFlow(chat,q.from.id,base,q.from,mid)}
     if(q.data&&q.data.startsWith('a:')&&await isOwner(q.from.id))return adminCb(chat,mid,q.data,q.from);return}
   if(up.chat_member){
     const cm=up.chat_member,usr=cm.new_chat_member?.user,uid=usr?.id;if(!uid)return;const member=isM(cm.new_chat_member);
     const was=cm.old_chat_member?isM(cm.old_chat_member):false;
     if(member!==was)await logEv(member?'join':'leave',uid,usr.first_name).catch(()=>{});
-    let u=await rd(ukey(uid));if(u){u.member=member;u.checkedAt=now();if(member&&!was)u.removed=false;await wr(ukey(uid),u)}
+    let u=await rd(ukey(uid));if(u){u.member=member;u.checkedAt=now();await wr(ukey(uid),u)}
     const link=cm.invite_link?.invite_link;
     if(member&&!was&&link){const inv=await invDevice(link),dev=inv&&inv.dev;
-      if(dev&&!(u&&u.banned)){await touch(usr,{src:'invite'});const code=await userCode(uid,false,usr);await linkDevice(uid,dev);
+      if(dev&&!(u&&(u.banned||u.removed))){await touch(usr,{src:'invite'});const code=await userCode(uid,false,usr);await linkDevice(uid,dev);
         const x=(await rd(IDX))||{u:{}};if(x.u[uid]&&x.u[uid].s){await say(uid,'✅ <b>Verified automatically!</b>\nThanks for joining. Your StudyBull Batches are unlocked on the browser you came from.',kb(siteBtn(base,code,inv.origin)))}}}
     return}
   const m=up.message;if(!m||m.chat?.type!=='private'||!m.from)return;
