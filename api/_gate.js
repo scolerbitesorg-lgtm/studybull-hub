@@ -71,7 +71,7 @@ export async function check(dev,sid,noSess,sig){
     else return {ok:false,reason:'error'}; // fail closed
   }
   if(!noSess&&(await settings()).mode==='every'&&!(await hasGrant(dev,sid)))return {ok:false,reason:'session'};
-  if(sig)await noteSig(d,dev,sig).catch(()=>{});
+  if(sig&&(await settings()).match===true)await noteSig(d,dev,sig).catch(()=>{}); // collect only while an admin has recognition ON
   return {ok:true};
 }
 // Device recognition: a browser that linked once leaves a signature (device fingerprint + network prefix).
