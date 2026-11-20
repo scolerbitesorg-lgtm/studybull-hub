@@ -22,11 +22,16 @@ export const hash=s=>crypto.createHash('sha256').update(s).digest('hex').slice(0
 export async function tg(method,body){const c=cfg();const r=await fetch(`${c.api}/bot${c.token}/${method}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(8000)});return r.json()}
 export async function tgDoc(chat,filename,text,caption){const c=cfg();const fd=new FormData();fd.append('chat_id',String(chat));if(caption)fd.append('caption',caption);fd.append('document',new Blob([text],{type:'text/csv'}),filename);const r=await fetch(`${c.api}/bot${c.token}/sendDocument`,{method:'POST',body:fd,signal:AbortSignal.timeout(15000)});return r.json()}
 export const isM=st=>['creator','administrator','member'].includes(st.status)||(st.status==='restricted'&&st.is_member===true);
-export async function isMember(userId){const j=await tg('getChatMember',{chat_id:cfg().channel,user_id:userId});if(!j.ok)return {ok:false,err:j.description||'telegram error'};return {ok:true,member:isM(j.result)}}
+export async function isMemberIn(userId,chat){const j=await tg('getChatMember',{chat_id:chat,user_id:userId});if(!j.ok)return {ok:false,err:j.description||'telegram error'};return {ok:true,member:isM(j.result)}}
+// the gate requires every channel: the main one (env) plus any added by the admin
+export async function channels(){const st=await settings();return [{id:cfg().channel,name:process.env.GATE_CHANNEL_NAME||'Channel',link:cfg().link,primary:true},...(st.channels||[])]}
+export async function isMember(userId){const chs=await channels();const rs=await Promise.all(chs.map(c=>isMemberIn(userId,c.id)));
+  const bad=rs.find(r=>!r.ok);if(bad)return {ok:false,err:bad.err};const missing=chs.filter((c,k)=>!rs[k].member);return {ok:true,member:missing.length===0,missing}}
 export const ukey=tgid=>`gate/user-${tgid}.json`, dkey=d=>`gate/dev-${hash(d)}.json`, pkey=c=>`gate/pending-${c}.json`, ckey=h=>`gate/code-${h}.json`;
 export const SET='gate/settings.json',IDX='gate/index.json',LOG='gate/log.json',OWN='gate/owner.json',STATE='gate/state.json';
-export const settings=async()=>(await rd(SET))||{};
-export const saveSettings=v=>wr(SET,v);
+let _st=null,_stT=0; // short cache: the admin panel and every gate check read settings
+export const settings=async()=>{if(_st&&Date.now()-_stT<4000)return _st;const v=(await rd(SET))||{};_st=v;_stT=Date.now();return v};
+export const saveSettings=async v=>{await wr(SET,v);_st=v;_stT=Date.now()};
 export async function logEv(k,id,n){const l=(await rd(LOG))||{e:[]};l.e.push({t:now(),k,id,n:n||''});l.e=l.e.slice(-200);await wr(LOG,l)}
 // index of users who interacted with the bot or joined through the gate
 export async function touch(from,extra){if(!from||!from.id)return;const x=(await rd(IDX))||{u:{}};const o=x.u[from.id]||{at:now()};
@@ -103,4 +108,4 @@ export async function redeem(dev,code,maxD,sid,fp){
   await linkDevice(c.tg,dev,maxD);if(one&&!c.fp)await wr(alk(code),{...c,fp:hash(fp),usedAt:now()});if(okId(sid))await wr(gkey(dev,sid),{exp:now()+43200});return {ok:true}}
 export async function claimCode(){const o=await rd(OWN);if(o&&o.id)return {error:'owner already set'};const code=crypto.randomBytes(6).toString('hex');await wr('gate/claim.json',{h:hash(code),exp:now()+86400});return {code}}
 export async function setup(base){const c=cfg();return tg('setWebhook',{url:base+'/api/gate?action=hook',secret_token:c.secret,allowed_updates:['message','chat_member','callback_query'],drop_pending_updates:true})}
-export {handleUpdate} from './_bot.js';
+export {handleUpdate,setMenu} from './_bot.js';
