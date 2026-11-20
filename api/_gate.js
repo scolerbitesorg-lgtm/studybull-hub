@@ -48,13 +48,13 @@ export const invDevice=async link=>{const v=await rd(`gate/inv-${hash(link)}.jso
 export async function start(dev,origin){if(!okId(dev))throw Error('bad device');const code=crypto.randomBytes(9).toString('base64url');await wr(pkey(code),{dev,origin:origin||'',exp:now()+900});
   let join='';try{join=await inviteFor(dev,origin)}catch{}
   return {code,url:`https://t.me/${cfg().bot}?start=${code}`,join}}
-export async function check(dev){
+export async function check(dev,sid,noSess){
   if(!okId(dev))return {ok:false,reason:'none'};
   const d=await rd(dkey(dev));if(!d)return {ok:false,reason:'none'};
   const u=await rd(ukey(d.tg));if(!u)return {ok:false,reason:'none'};
   if(!u.devices||!u.devices[hash(dev)])return {ok:false,reason:'device'};
   if(u.banned)return {ok:false,reason:'banned'};
-  if(u.removed)return {ok:false,reason:'left'};
+  if(u.removed)return {ok:false,reason:'removed'};
   if(u.member===false)return {ok:false,reason:'left'};
   if((await settings()).paused)return {ok:true};
   if(now()-(u.checkedAt||0)>cfg().recheck){
@@ -62,14 +62,39 @@ export async function check(dev){
     if(m.ok){u.member=m.member;u.checkedAt=now();await wr(ukey(d.tg),u);if(!m.member)return {ok:false,reason:'left'}}
     else return {ok:false,reason:'error'}; // fail closed
   }
+  if(!noSess&&(await settings()).mode==='every'&&!(await hasGrant(dev,sid)))return {ok:false,reason:'session'};
   return {ok:true};
 }
-export async function redeem(dev,code,maxD){
+const gkey=(dev,sid)=>`gate/sess-${hash(dev+':'+sid)}.json`;
+async function hasGrant(dev,sid){if(!okId(sid))return false;const g=await rd(gkey(dev,sid));return !!(g&&g.exp>now())}
+// "every visit" mode: one grant per page load (session id), lasts 12h so other open tabs keep working
+export async function grant(dev,sid){const c=await check(dev,sid,true);if(!c.ok)return c;if(!okId(sid))return {ok:false,reason:'none'};await wr(gkey(dev,sid),{exp:now()+43200});return {ok:true}}
+// Telegram Login widget data (signed with the bot token)
+export function verifyLogin(u){
+  if(!u||typeof u!=='object'||!u.hash||!u.id||!u.auth_date)return null;
+  const keys=Object.keys(u).filter(k=>k!=='hash'&&u[k]!=null&&typeof u[k]!=='object').sort();
+  const str=keys.map(k=>k+'='+u[k]).join('\n');
+  const secret=crypto.createHash('sha256').update(cfg().token).digest();
+  const mac=crypto.createHmac('sha256',secret).update(str).digest('hex');
+  const a=Buffer.from(mac),b=Buffer.from(String(u.hash));
+  if(a.length!==b.length||!crypto.timingSafeEqual(a,b))return null;
+  if(now()-Number(u.auth_date)>86400)return null;
+  return {id:Number(u.id),first_name:u.first_name,last_name:u.last_name,username:u.username}}
+export async function loginDevice(dev,sid,user){
+  const v=verifyLogin(user);if(!v)return {ok:false,reason:'badlogin'};
+  if(!okId(dev))return {ok:false,reason:'none'};
+  const u0=await rd(ukey(v.id));if(u0&&u0.banned)return {ok:false,reason:'banned'};
+  const m=await isMember(v.id);if(!m.ok)return {ok:false,reason:'error'};if(!m.member)return {ok:false,reason:'notmember'};
+  if(u0&&u0.removed)return {ok:false,reason:'removed'};
+  await touch(v);await userCode(v.id,false);await linkDevice(v.id,dev);
+  if(okId(sid))await wr(gkey(dev,sid),{exp:now()+43200});
+  return {ok:true}}
+export async function redeem(dev,code,maxD,sid){
   if(!okId(dev)||typeof code!=='string'||!/^[A-Za-z0-9_-]{20,64}$/.test(code))return {ok:false,reason:'none'};
   const c=await rd(ckey(hash(code)));if(!c||c.off)return {ok:false,reason:'badcode'};
-  const bu=await rd(ukey(c.tg));if(bu&&bu.banned)return {ok:false,reason:'banned'};if(bu&&bu.removed)return {ok:false,reason:'left'};
+  const bu=await rd(ukey(c.tg));if(bu&&bu.banned)return {ok:false,reason:'banned'};if(bu&&bu.removed)return {ok:false,reason:'removed'};
   const m=await isMember(c.tg);if(!m.ok)return {ok:false,reason:'error'};if(!m.member)return {ok:false,reason:'left'};
-  await linkDevice(c.tg,dev,maxD);return {ok:true}}
+  await linkDevice(c.tg,dev,maxD);if(okId(sid))await wr(gkey(dev,sid),{exp:now()+43200});return {ok:true}}
 export async function claimCode(){const o=await rd(OWN);if(o&&o.id)return {error:'owner already set'};const code=crypto.randomBytes(6).toString('hex');await wr('gate/claim.json',{h:hash(code),exp:now()+86400});return {code}}
 export async function setup(base){const c=cfg();return tg('setWebhook',{url:base+'/api/gate?action=hook',secret_token:c.secret,allowed_updates:['message','chat_member','callback_query'],drop_pending_updates:true})}
 export {handleUpdate} from './_bot.js';
