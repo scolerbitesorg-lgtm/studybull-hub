@@ -85,7 +85,9 @@ location.href=app}
 let gatePoll=null,gateVis=null,gateStart=null;
 function gateClose(){clearInterval(gatePoll);if(gateVis){document.removeEventListener('visibilitychange',gateVis);gateVis=null}const o=document.getElementById('gateov');if(o)o.remove();document.body.style.overflow=''}
 const gjs=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch{return null}};
-async function gateUnlock(){gatePassed=true;localStorage.setItem('sb_gl','0');localStorage.setItem('sb_gr','');gateClose();ownerRevision=null;refreshOwner(true);renderRoute()}
+async function gateUnlock(){gatePassed=true;localStorage.setItem('sb_gl','0');localStorage.setItem('sb_gr','');clearInterval(gatePoll);const o=document.getElementById('gateov'),c=o&&o.querySelector('.gc');
+  if(c&&!matchMedia('(prefers-reduced-motion:reduce)').matches){c.innerHTML='<div class="gok"><div class="ring"><svg width="44" height="44" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h2 style="margin:0 0 6px;font-size:22px;color:#fff">You are in!</h2><p style="margin:0;color:#94a3b8">Batches unlocked</p></div>';await new Promise(r=>setTimeout(r,850))}
+  gateClose();ownerRevision=null;refreshOwner(true);renderRoute()}
 async function gatePage(token,reason,instant){
   clearInterval(gatePoll);if(gateVis){document.removeEventListener('visibilitychange',gateVis);gateVis=null}
   let o=document.getElementById('gateov');const pre=!!o;
@@ -123,7 +125,7 @@ async function gatePage(token,reason,instant){
     try{const i=await(await gfetch('/api/gate?action=info')).json();if(!alive())return;
       if(!i.enabled){localStorage.setItem('sb_gl','0');dead=true;gateClose();return}
       localStorage.setItem('sb_gm',i.mode||'once');
-      if(i.name!==info.name||i.link!==info.link||i.login!==info.login||i.botId!==info.botId){info={name:i.name,link:i.link,login:i.login,botId:i.botId};localStorage.setItem('sb_gi',JSON.stringify(info));render(false);ensureTg()}}catch{}
+      if(i.name!==info.name||i.link!==info.link||i.login!==info.login||i.botId!==info.botId||JSON.stringify(i.channels||[])!==JSON.stringify(info.channels||[])){info={name:i.name,link:i.link,login:i.login,botId:i.botId,channels:i.channels||[]};localStorage.setItem('sb_gi',JSON.stringify(info));render(false);ensureTg()}}catch{}
     const s0=await status();if(!alive())return;if(s0&&s0.ok){gateUnlock();return}
     if(s0&&s0.reason==='session'){linked=true;const stt0=o.querySelector('#gatestate');if(stt0)stt0.textContent='Welcome back. Tap Verify to continue.'}
     if(s0&&s0.reason&&s0.reason!==reason&&s0.reason!=='none'&&s0.reason!=='device'){reason=s0.reason;localStorage.setItem('sb_gr',reason);render(false)}
