@@ -1,5 +1,5 @@
 // Bot experience (staged, animated messages) and owner panel. Only touches users who interacted with the bot or joined through the gate.
-import {cfg,rd,wr,now,hash,ckey,tg,tgDoc,isM,isMember,isMemberIn,channels,ukey,userCode,deviceLink,linkDevice,pkey,invDevice,settings,saveSettings,touch,logEv,IDX,LOG,OWN,STATE} from './_gate.js';
+import {bidDev,dkey,cfg,rd,wr,now,hash,ckey,tg,tgDoc,isM,isMember,isMemberIn,channels,ukey,userCode,deviceLink,linkDevice,pkey,invDevice,settings,saveSettings,touch,logEv,IDX,LOG,OWN,STATE} from './_gate.js';
 const h=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const sleep=ms=>process.env.GATE_MEM?Promise.resolve():new Promise(r=>setTimeout(r,ms));
 const say=(chat,text,extra)=>tg('sendMessage',{chat_id:chat,text,parse_mode:'HTML',disable_web_page_preview:true,...extra});
@@ -225,6 +225,21 @@ async function memberEvent(cm,base){
       await touch(usr,{src:'invite'});await userCode(uid,false,usr);await linkDevice(uid,dev);const code=await deviceLink(uid,dev);
       if(started){await say(uid,'✅ <b>Verified automatically!</b>\nThanks for joining. Your StudyBull Batches are unlocked on the browser you came from.',kb(siteBtn(base,code,inv.origin)))}}}
 }
+async function bindBid(chat,m,base,id){
+  const uid=m.from.id,rk=`gate/rl-${uid}.json`;const r=(await rd(rk))||{n:0,t:now()};if(now()-r.t>3600){r.n=0;r.t=now()}
+  if(r.n>=10)return sayFresh(chat,'⏳ Too many tries. Please wait a while and try again.');
+  r.n++;await wr(rk,r);
+  const dev=await bidDev(id);
+  if(!dev)return sayFresh(chat,'❓ <b>That browser ID was not found.</b>\nOpen StudyBull and copy the ID again.');
+  const u1=await rd(ukey(uid));if(u1&&(u1.banned||u1.removed))return verifyFlow(chat,uid,base,m.from);
+  const d=await rd(dkey(dev));
+  if(d&&d.tg!==uid){const ou=await rd(ukey(d.tg));if(ou&&ou.devices&&ou.devices[hash(dev)]&&!ou.banned&&!ou.removed&&ou.member!==false)return sayFresh(chat,'🔒 <b>That browser is already active</b> on another account. It cannot be moved.')}
+  await typing(chat);
+  const mm=await isMember(uid);
+  if(!mm.ok)return sayFresh(chat,'⚠️ <b>Could not check right now.</b>\nTry again in a minute.',kb([[{text:'🔄 Try again',callback_data:'v'}]]));
+  if(!mm.member)return sayFresh(chat,'😕 <b>You have not joined yet</b>\nJoin the channel first, then send the ID again.',kb(joinRows(mm.missing)));
+  await touch(m.from,{s:true});await userCode(uid,false,m.from);await linkDevice(uid,dev);
+  return finalFx(chat,undefined,'✅ <b>Browser linked!</b>\nGo back to the StudyBull site, it unlocks by itself. You can close this chat.\n\n🚪 If you leave a required channel, access locks again')}
 async function onMessage(m,base){
   const chat=m.chat.id,t=String(m.text||'');
   const cl=t.match(/^\/claim\s+([a-f0-9]{12})$/);
@@ -234,6 +249,7 @@ async function onMessage(m,base){
   await ensureMenu();
   if(/^\/help\b/.test(t))return sayFresh(chat,own?HELP_OWNER:HELP_USER);
   if(/^\/site\b/.test(t))return sayFresh(chat,'🔗 <b>StudyBull</b>\n'+siteUrl(),kb([[{text:'🚀 Open StudyBull',url:siteUrl()}]]));
+  const bm=t.match(/^\/?(?:(?:start|get access|access)\s+)?(rs-[a-z0-9]{6})\s*$/i);if(bm)return bindBid(chat,m,base,bm[1].toLowerCase());
   if(own){
     if(/^\/verify\b/.test(t))return welcome(chat,m.from,base);
     if(/^\/(admin|panel|start)\b/.test(t)&&!/^\/start\s+\S/.test(t)){const st0=await settings();if(!st0.ownerPin){st0.ownerPin=1;await saveSettings(st0);await pinLink(chat,'👑 <b>StudyBull admin</b>\nSend /admin to open your panel.\nWebsite: '+siteUrl())}await Promise.all([setState(),panel(chat)]);return}
