@@ -92,15 +92,15 @@ export async function loginDevice(dev,sid,user){
   await touch(v);await userCode(v.id,false);await linkDevice(v.id,dev);
   if(okId(sid))await wr(gkey(dev,sid),{exp:now()+43200});
   return {ok:true}}
-export async function redeem(dev,code,maxD,sid){
+export async function redeem(dev,code,maxD,sid,fp){
   if(!okId(dev)||typeof code!=='string'||!/^[A-Za-z0-9_-]{20,64}$/.test(code))return {ok:false,reason:'none'};
   let c=await rd(alk(code)),one=false;
-  if(c){one=true;if(c.exp<=now())return {ok:false,reason:'expired'};if(c.dev&&c.dev!==hash(dev))return {ok:false,reason:'otherdevice'}}
+  if(c){one=true;if(c.exp<=now())return {ok:false,reason:'expired'};if(!/^[a-z0-9]{8,40}$/.test(fp||''))return {ok:false,reason:'otherdevice'};if(c.fp&&c.fp!==hash(fp))return {ok:false,reason:'otherdevice'}}
   else c=await rd(ckey(hash(code)));
   if(!c||c.off)return {ok:false,reason:'badcode'};
   const bu=await rd(ukey(c.tg));if(bu&&bu.banned)return {ok:false,reason:'banned'};if(bu&&bu.removed)return {ok:false,reason:'removed'};
   const m=await isMember(c.tg);if(!m.ok)return {ok:false,reason:'error'};if(!m.member)return {ok:false,reason:'left'};
-  await linkDevice(c.tg,dev,maxD);if(one&&!c.dev)await wr(alk(code),{...c,dev:hash(dev),usedAt:now()});if(okId(sid))await wr(gkey(dev,sid),{exp:now()+43200});return {ok:true}}
+  await linkDevice(c.tg,dev,maxD);if(one&&!c.fp)await wr(alk(code),{...c,fp:hash(fp),usedAt:now()});if(okId(sid))await wr(gkey(dev,sid),{exp:now()+43200});return {ok:true}}
 export async function claimCode(){const o=await rd(OWN);if(o&&o.id)return {error:'owner already set'};const code=crypto.randomBytes(6).toString('hex');await wr('gate/claim.json',{h:hash(code),exp:now()+86400});return {code}}
 export async function setup(base){const c=cfg();return tg('setWebhook',{url:base+'/api/gate?action=hook',secret_token:c.secret,allowed_updates:['message','chat_member','callback_query'],drop_pending_updates:true})}
 export {handleUpdate} from './_bot.js';
