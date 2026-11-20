@@ -1,5 +1,5 @@
 // Bot experience (staged, animated messages) and owner panel. Only touches users who interacted with the bot or joined through the gate.
-import {cfg,rd,wr,now,hash,tg,tgDoc,isM,isMember,ukey,userCode,linkDevice,pkey,invDevice,settings,saveSettings,touch,logEv,IDX,LOG,OWN,STATE} from './_gate.js';
+import {cfg,rd,wr,now,hash,ckey,tg,tgDoc,isM,isMember,ukey,userCode,linkDevice,pkey,invDevice,settings,saveSettings,touch,logEv,IDX,LOG,OWN,STATE} from './_gate.js';
 const h=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const sleep=ms=>process.env.GATE_MEM?Promise.resolve():new Promise(r=>setTimeout(r,ms));
 const say=(chat,text,extra)=>tg('sendMessage',{chat_id:chat,text,parse_mode:'HTML',disable_web_page_preview:true,...extra});
@@ -11,9 +11,12 @@ const DEFAULT_WELCOME='👋 <b>Welcome to StudyBull</b>\nJoin our channel to unl
 const siteBtn=(base,code,origin)=>{const site=origin||cfg().site||'https://studybull.qd.je';return site?[[{text:'🚀 Open StudyBull',url:`${site}/#unlock=${code}`}]]:[]};
 const joinRows=()=>{const c=cfg();return [...(c.link?[[{text:'📢 Join channel',url:c.link}]]:[]),[{text:'🔄 I have joined, Verify',callback_data:'v'}]]};
 async function isBanned(uid){const u=await rd(ukey(uid));return !!(u&&u.banned)}
+async function isRemoved(uid){const u=await rd(ukey(uid));return !!(u&&u.removed)}
+const REMOVED_MSG='🔒 <b>Your access was removed by the admin.</b>\nTo get access again, join the channel again with the Join button, then tap Verify.'
 // staged, edit-in-place verification
 async function verifyFlow(chat,uid,base,from,mid){
   if(await isBanned(uid)){await edit(chat,mid,'🚫 <b>Access is blocked</b> for this account.');return}
+  if(await isRemoved(uid)){const mm0=await isMember(uid);if(!mm0.ok||mm0.member){await edit(chat,mid,REMOVED_MSG,kb(joinRows()));return}await edit(chat,mid,REMOVED_MSG,kb(joinRows()));return}
   await typing(chat);
   const first=await edit(chat,mid,`🔍 <b>Checking your membership</b>\n${bar(1)}`);
   mid=mid||first?.result?.message_id;
@@ -53,7 +56,7 @@ async function detail(chat,mid,id){
   const x=(await rd(IDX))||{u:{}};const o=x.u[id]||{};const {u,label}=await userStatus(id);
   if(!u&&!x.u[id]){await edit(chat,mid,'No record for <code>'+h(id)+'</code>.',kb(back));return}
   const text=`👤 <b>${h(o.n||'Unknown')}</b> ${o.un?'@'+h(o.un):''}\nID: <code>${id}</code>\nStatus: ${label}\nFirst seen: ${when(o.at)}\nLast seen: ${when(o.seen)}\nStarted bot: ${o.s?'yes':'no'}\nBrowsers linked: ${u?Object.keys(u.devices||{}).length:0}\nLast membership check: ${u?when(u.checkedAt):'-'}`;
-  await edit(chat,mid,text,kb([[{text:'🔒 Sign out browsers',callback_data:'a:rv:'+id},{text:u&&u.banned?'✅ Unban':'🚫 Ban',callback_data:(u&&u.banned?'a:ub:':'a:bn:')+id}],[{text:'🔑 New code',callback_data:'a:nc:'+id},{text:'✉️ Message',callback_data:'a:m:'+id}],[{text:'⬅️ Users',callback_data:'a:u:0'}]]))}
+  await edit(chat,mid,text,kb([[{text:'🔒 Sign out browsers',callback_data:'a:rv:'+id},{text:u&&u.banned?'✅ Unban':'🚫 Ban',callback_data:(u&&u.banned?'a:ub:':'a:bn:')+id}],[{text:'🔑 New code',callback_data:'a:nc:'+id},{text:'✉️ Message',callback_data:'a:m:'+id}],[{text:'🗑 Remove access',callback_data:'a:rm:'+id}],[{text:'⬅️ Users',callback_data:'a:u:0'}]]))}
 async function stats(chat,mid){
   const x=(await rd(IDX))||{u:{}};const ids=Object.keys(x.u);let mem=0,ban=0,left=0,dev=0;
   for(const id of ids.slice(0,300)){const u=await rd(ukey(id));if(!u)continue;if(u.banned)ban++;else if(u.member===false)left++;else if(u.member)mem++;dev+=Object.keys(u.devices||{}).length}
@@ -110,6 +113,13 @@ async function adminCb(chat,mid,data,from){
     return edit(chat,mid,`🔄 Checked <b>${n}</b> users, <b>${l}</b> not in the channel.`,kb(back))}
   const id=p[2];const u=id&&await rd(ukey(id));
   if(k==='rv'||k==='bn'||k==='ub'){if(!u)return edit(chat,mid,'No record.',kb(back));if(k==='ub')u.banned=false;else{u.devices={};if(k==='bn')u.banned=true}await wr(ukey(id),u);return detail(chat,mid,id)}
+  if(k==='rm')return edit(chat,mid,`🗑 <b>Remove access?</b>\n<code>${h(id)}</code> will be signed out of every browser and kicked from the channel. They must join again to get access back. This does not ban them.`,kb([[{text:'✅ Yes, remove',callback_data:'a:rmy:'+id}],[{text:'✖️ Cancel',callback_data:'a:d:'+id}]]))
+  if(k==='rmy'){if(!u)return edit(chat,mid,'No record.',kb(back));
+    if(u.code)await wr(ckey(hash(u.code)),{tg:Number(id),off:true});delete u.code;u.devices={};u.member=false;u.removed=true;u.removedAt=now();await wr(ukey(id),u);
+    let kicked=false;try{const b=await tg('banChatMember',{chat_id:cfg().channel,user_id:Number(id),revoke_messages:false});if(b.ok){const ub=await tg('unbanChatMember',{chat_id:cfg().channel,user_id:Number(id),only_if_banned:true});kicked=ub.ok}}catch{}
+    await logEv('leave',Number(id),'removed by admin').catch(()=>{});
+    const note=kicked?'They were kicked from the channel and can join again.':'⚠️ Telegram did not let me kick them (they may be an admin or owner of the channel). Their access is cut anyway and Verify will not work until they leave and join again.';
+    return edit(chat,mid,`🗑 <b>Access removed</b> for <code>${h(id)}</code>.\n${note}`,kb([[{text:'⬅️ Users',callback_data:'a:u:0'}]]))}
   if(k==='nc'){if(!u)return edit(chat,mid,'No record.',kb(back));await userCode(id,true);return detail(chat,mid,id)}
 }
 export async function handleUpdate(up,base){
@@ -121,7 +131,7 @@ export async function handleUpdate(up,base){
     const cm=up.chat_member,usr=cm.new_chat_member?.user,uid=usr?.id;if(!uid)return;const member=isM(cm.new_chat_member);
     const was=cm.old_chat_member?isM(cm.old_chat_member):false;
     if(member!==was)await logEv(member?'join':'leave',uid,usr.first_name).catch(()=>{});
-    let u=await rd(ukey(uid));if(u){u.member=member;u.checkedAt=now();await wr(ukey(uid),u)}
+    let u=await rd(ukey(uid));if(u){u.member=member;u.checkedAt=now();if(member&&!was)u.removed=false;await wr(ukey(uid),u)}
     const link=cm.invite_link?.invite_link;
     if(member&&!was&&link){const inv=await invDevice(link),dev=inv&&inv.dev;
       if(dev&&!(u&&u.banned)){await touch(usr,{src:'invite'});const code=await userCode(uid,false,usr);await linkDevice(uid,dev);
@@ -148,6 +158,7 @@ export async function handleUpdate(up,base){
   const p=await rd(pkey(code));
   if(!p||p.exp<now()){return welcome(chat,m.from,base)}
   if(await isBanned(m.from.id)){await say(chat,'🚫 <b>Access is blocked</b> for this account.');return}
+  if(await isRemoved(m.from.id)){await say(chat,REMOVED_MSG,kb(joinRows()));return}
   await typing(chat);
   const first=await say(chat,`🔍 <b>Checking your membership</b>\n${bar(1)}`);const mid=first?.result?.message_id;
   const [mm]=await Promise.all([isMember(m.from.id),sleep(700)]);
