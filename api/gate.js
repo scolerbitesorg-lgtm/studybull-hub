@@ -1,4 +1,4 @@
-import {cfg,enabled,start,check,handleUpdate,setup} from './_gate.js';
+import {cfg,enabled,start,check,handleUpdate,setup,redeem} from './_gate.js';
 const ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtms-projects.vercel.app','https://studybull.qd.je','https://www.studybull.qd.je']);
 const send=(res,s,d)=>{res.statusCode=s;res.setHeader('Content-Type','application/json; charset=utf-8');res.end(JSON.stringify(d))};
 export const bearer=req=>{const h=String(req.headers.authorization||'');return h.startsWith('Bearer ')?h.slice(7):''};
@@ -11,13 +11,16 @@ export default async function handler(req,res){
   try{
     if(action==='hook'&&req.method==='POST'){ // Telegram webhook, authenticated by secret header
       if(!enabled()||req.headers['x-telegram-bot-api-secret-token']!==cfg().secret)return send(res,403,{error:'forbidden'});
-      const up=typeof req.body==='string'?JSON.parse(req.body):req.body;await handleUpdate(up||{});return send(res,200,{ok:true})}
+      const up=typeof req.body==='string'?JSON.parse(req.body):req.body;await handleUpdate(up||{},'https://'+req.headers.host);return send(res,200,{ok:true})}
     if(action==='setup'&&req.method==='POST'){ // owner runs once: sets the Telegram webhook
-      if(!enabled()||bearer(req)!==cfg().secret)return send(res,403,{error:'forbidden'});
+      if(!enabled()||(bearer(req)!==cfg().secret&&bearer(req)!==cfg().token))return send(res,403,{error:'forbidden'});
       return send(res,200,await setup('https://'+req.headers.host))}
     if(action==='info')return send(res,200,{enabled:enabled(),link:cfg().link,name:process.env.GATE_CHANNEL_NAME||'StudyBull'});
     if(!enabled())return send(res,200,{enabled:false,ok:true});
     if(action==='status')return send(res,200,{enabled:true,...await check(bearer(req))});
+    if(action==='redeem'&&req.method==='POST'){
+      if(!o||!ORIGINS.has(o))return send(res,403,{error:'Use the StudyBull website.'});
+      const b=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});return send(res,200,await redeem(bearer(req),b.code))}
     if(action==='start'&&req.method==='POST'){
       if(!o||!ORIGINS.has(o))return send(res,403,{error:'Use the StudyBull website.'});
       return send(res,200,await start(bearer(req)))}
