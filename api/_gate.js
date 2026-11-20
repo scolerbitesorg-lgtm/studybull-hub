@@ -38,7 +38,8 @@ export async function touch(from,extra){if(!from||!from.id)return;const x=(await
   x.u[from.id]={...o,n:[from.first_name,from.last_name].filter(Boolean).join(' ').slice(0,40)||o.n||'',un:from.username||o.un||'',seen:now(),...(extra||{})};await wr(IDX,x)}
 // one-time access link: binds to the first browser that opens it (or to a browser given up front), 24h
 const alk=c=>`gate/al-${hash(c)}.json`;
-export async function deviceLink(tg,dev){const c=crypto.randomBytes(18).toString('base64url');await wr(alk(c),{tg,dev:okId(dev)?hash(dev):null,exp:now()+86400});return c}
+export async function deviceLink(tg,dev){const c=String(tg)+'.'+crypto.randomBytes(24).toString('base64url'); // link = user id + long random token, bound to one device
+  await wr(alk(c),{tg,dev:okId(dev)?hash(dev):null,exp:now()+86400});return c}
 export async function userCode(tgid,rotate,from){
   if(from)await touch(from);
   let u=(await rd(ukey(tgid)))||{tg:tgid,devices:{}};
@@ -116,9 +117,9 @@ export async function loginDevice(dev,sid,user){
   if(okId(sid))await wr(gkey(dev,sid),{exp:now()+43200});
   return {ok:true}}
 export async function redeem(dev,code,maxD,sid,fp){
-  if(!okId(dev)||typeof code!=='string'||!/^[A-Za-z0-9_-]{20,64}$/.test(code))return {ok:false,reason:'none'};
+  if(!okId(dev)||typeof code!=='string'||!/^[A-Za-z0-9_.-]{20,80}$/.test(code))return {ok:false,reason:'none'};
   let c=await rd(alk(code)),one=false;
-  if(c){one=true;if(c.exp<=now())return {ok:false,reason:'expired'};if(!/^[a-z0-9]{8,40}$/.test(fp||''))return {ok:false,reason:'otherdevice'};if(c.fp&&c.fp!==hash(fp))return {ok:false,reason:'otherdevice'}}
+  if(c){one=true;if(!code.startsWith(String(c.tg)+'.'))return {ok:false,reason:'badcode'};if(c.exp<=now())return {ok:false,reason:'expired'};if(!/^[a-z0-9]{8,40}$/.test(fp||''))return {ok:false,reason:'otherdevice'};if(c.fp&&c.fp!==hash(fp))return {ok:false,reason:'otherdevice'}}
   else c=await rd(ckey(hash(code)));
   if(!c||c.off)return {ok:false,reason:'badcode'};
   const bu=await rd(ukey(c.tg));if(bu&&bu.banned)return {ok:false,reason:'banned'};if(bu&&bu.removed)return {ok:false,reason:'removed'};
