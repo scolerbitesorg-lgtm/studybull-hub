@@ -1,4 +1,11 @@
-import crypto from 'node:crypto';
+as gateOn,check as gateCheck} from './_gate.js';
+
+const PATH='studybull-courses-v1.json';
+const ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtms-projects.vercel.app','https://studybull.qd.je','https://www.studybull.qd.je','https://admin.studybull.qd.je']);
+const OWNER_ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtms-projects.vercel.app','https://admin.studybull.qd.je']);
+const COOKIE='sb_owner_v1';
+const attempts=new Map();
+const import crypto from 'node:crypto';
 import {get,put,BlobPreconditionFailedError} from '@vercel/blob';
 import {enabled as gateOn,check as gateCheck} from './_gate.js';
 
