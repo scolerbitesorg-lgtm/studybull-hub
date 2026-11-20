@@ -54,6 +54,7 @@ export async function check(dev){
   const u=await rd(ukey(d.tg));if(!u)return {ok:false,reason:'none'};
   if(!u.devices||!u.devices[hash(dev)])return {ok:false,reason:'device'};
   if(u.banned)return {ok:false,reason:'banned'};
+  if(u.removed)return {ok:false,reason:'left'};
   if(u.member===false)return {ok:false,reason:'left'};
   if((await settings()).paused)return {ok:true};
   if(now()-(u.checkedAt||0)>cfg().recheck){
@@ -66,7 +67,7 @@ export async function check(dev){
 export async function redeem(dev,code,maxD){
   if(!okId(dev)||typeof code!=='string'||!/^[A-Za-z0-9_-]{20,64}$/.test(code))return {ok:false,reason:'none'};
   const c=await rd(ckey(hash(code)));if(!c||c.off)return {ok:false,reason:'badcode'};
-  const bu=await rd(ukey(c.tg));if(bu&&bu.banned)return {ok:false,reason:'banned'};
+  const bu=await rd(ukey(c.tg));if(bu&&bu.banned)return {ok:false,reason:'banned'};if(bu&&bu.removed)return {ok:false,reason:'left'};
   const m=await isMember(c.tg);if(!m.ok)return {ok:false,reason:'error'};if(!m.member)return {ok:false,reason:'left'};
   await linkDevice(c.tg,dev,maxD);return {ok:true}}
 export async function claimCode(){const o=await rd(OWN);if(o&&o.id)return {error:'owner already set'};const code=crypto.randomBytes(6).toString('hex');await wr('gate/claim.json',{h:hash(code),exp:now()+86400});return {code}}
