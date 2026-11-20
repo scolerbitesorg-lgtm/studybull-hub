@@ -117,7 +117,10 @@ export async function loginDevice(dev,sid,user){
   if(okId(sid))await wr(gkey(dev,sid),{exp:now()+43200});
   return {ok:true}}
 // Shared rate limit (stored in the blob store, so every server instance sees the same counts). One small file per scope, overwritten each window.
-export async function rl(scope,id,max,win){try{const k=`gate/rl-${hash(scope+'|'+id)}.json`,t=now(),e=await rd(k);
+const lc=new Map();
+export async function rl(scope,id,max,win,lazy){try{
+  if(lazy){const t0=now(),lk=scope+'|'+id,x=lc.get(lk);let n=1;if(x&&t0-x.w<win){x.n++;n=x.n}else lc.set(lk,{w:t0,n:1});if(lc.size>5000)lc.clear();if(n<=lazy)return true} // cheap path: only busy callers reach the shared store
+  const k=`gate/rl-${hash(scope+'|'+id)}.json`,t=now(),e=await rd(k);
   if(!e||t-e.w>=win){await wr(k,{w:t,n:1});return true}if(e.n>=max)return false;await wr(k,{w:e.w,n:e.n+1});return true}catch{return true}}
 export async function redeem(dev,code,maxD,sid,fp){
   if(!okId(dev)||typeof code!=='string'||!/^[A-Za-z0-9_.-]{20,80}$/.test(code))return {ok:false,reason:'none'};
