@@ -15,7 +15,7 @@ export default async function handler(req,res){
     if(action==='setup'&&req.method==='POST'){ // owner runs once: sets the Telegram webhook
       if(!enabled()||bearer(req)!==cfg().secret)return send(res,403,{error:'forbidden'});
       return send(res,200,await setup('https://'+req.headers.host))}
-    if(action==='info')return send(res,200,{enabled:enabled(),link:cfg().link});
+    if(action==='info')return send(res,200,{enabled:enabled(),link:cfg().link,name:process.env.GATE_CHANNEL_NAME||'StudyBull'});
     if(!enabled())return send(res,200,{enabled:false,ok:true});
     if(action==='status')return send(res,200,{enabled:true,...await check(bearer(req))});
     if(action==='start'&&req.method==='POST'){
