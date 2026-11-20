@@ -261,6 +261,13 @@ async function onMessage(m,base){
     if(!t.startsWith('/')&&await ownerText(chat,m))return;
     if(t==='/cancel'&&await ownerText(chat,m))return}
   if(/^\/?(get access|access)\s*$/i.test(t))return verifyFlow(chat,m.from.id,base,m.from);
+  if(t.length<60&&/(not\s*work|nahi\s*chal|nhi\s*chal|nahin\s*chal|kaam\s*nahi|new\s*link|naya\s*link|link\s*(expired|error|issue|problem))/i.test(t)){
+    const rk=`gate/rl-${m.from.id}.json`;const r=(await rd(rk))||{n:0,t:now()};if(now()-r.t>3600){r.n=0;r.t=now()}
+    if(r.n>=10)return sayFresh(chat,'⏳ Too many tries. Please wait a while and try again.');r.n++;await wr(rk,r);
+    const mm=await isMember(m.from.id),u2=await rd(ukey(m.from.id));
+    if(u2&&(u2.banned||u2.removed))return verifyFlow(chat,m.from.id,base,m.from);
+    if(mm.ok&&mm.member){await userCode(m.from.id,false,m.from);const nl=await deviceLink(m.from.id);return sayFresh(chat,'🔗 <b>Here is a new link.</b>\nOpen it on the browser you want to unlock. It works only on the first browser that opens it, so do not share it.',kb(siteBtn(base,nl)))}
+    return welcome(chat,m.from,base)}
   if(/^\/reset\b/.test(t)){const mm=await isMember(m.from.id);if(mm.ok&&mm.member&&!(await isBanned(m.from.id))){await userCode(m.from.id,true,m.from);const nc=await deviceLink(m.from.id);return sayFresh(chat,'🔑 <b>New link made.</b> The old link no longer works. Browsers already unlocked stay unlocked.',kb(siteBtn(base,nc)))}return welcome(chat,m.from,base)}
   const code=(t.match(/^\/start\s+([A-Za-z0-9_-]{6,40})$/)||[])[1];
   if(!code){return welcome(chat,m.from,base)}
