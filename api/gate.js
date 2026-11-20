@@ -24,7 +24,7 @@ export default async function handler(req,res){
       const b=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});return send(res,200,await redeem(bearer(req),b.code))}
     if(action==='start'&&req.method==='POST'){
       if(!o||!ORIGINS.has(o))return send(res,403,{error:'Use the StudyBull website.'});
-      return send(res,200,await start(bearer(req)))}
+      return send(res,200,await start(bearer(req),o))}
     return send(res,404,{error:'unknown'});
   }catch(e){console.error('gate',e.message);return send(res,503,{error:'Gate unavailable. Try again.'})}
-}
+       }
