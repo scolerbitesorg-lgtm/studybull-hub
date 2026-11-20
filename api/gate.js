@@ -30,10 +30,10 @@ export default async function handler(req,res){
     if(action==='claimcode'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});return send(res,200,await claimCode())}
     if(action==='info'){const st=enabled()?await settings():{};return send(res,200,{enabled:enabled(),link:cfg().link,name:process.env.GATE_CHANNEL_NAME||'StudyBull',mode:st.mode==='every'?'every':'once',login:Boolean(st.login),botId:st.login?cfg().token.split(':')[0]:'',channels:(st.channels||[]).map(c=>({name:c.name,link:c.link}))})}
     if(!enabled())return send(res,200,{enabled:false,ok:true});
-    {const LIM={bid:[20,60],status:[90,60],redeem:[15,300],grant:[40,60],recognize:[20,60],tglogin:[20,300],start:[15,300]}[action];
+    {const LIM={bid:[20,60,5],status:[90,60,10],redeem:[15,300],grant:[40,60,5],recognize:[20,60],tglogin:[20,300],start:[15,300]}[action];
       if(LIM){const ip=String(req.headers['x-forwarded-for']||req.socket?.remoteAddress||'').split(',')[0].trim()||'?';const b=bearer(req);
-        const okIp=await rl('ip:'+action,ip,LIM[0]*2,LIM[1]);const okBr=b?await rl('br:'+action,b,LIM[0],LIM[1]):true;
-        if(!okIp||!okBr){res.setHeader('Retry-After',String(LIM[1]));return send(res,429,{error:'Too many tries. Wait a minute and try again.',reason:'slow'})}}}
+        const [okIp,okBr]=await Promise.all([rl('ip:'+action,ip,LIM[0]*2,LIM[1],LIM[2]),b?rl('br:'+action,b,LIM[0],LIM[1],LIM[2]):true]);
+        if(!okIp||!okBr){res.setHeader('Retry-After',String(LIM[1]));return send(res,429,{error:'Too many tries. Wait a minute and try again.',ok:false,reason:'error'})}}}
     if(action==='bid'){const b=await ensureBid(bearer(req));return send(res,200,b?{ok:true,bid:b,url:`https://t.me/${cfg().bot}?start=${b}`}:{ok:false})}
     if(action==='status')return send(res,200,{enabled:true,...await check(bearer(req),sidOf(req),false,sigOf(req))});
     if(action==='redeem'&&req.method==='POST'){
@@ -54,4 +54,4 @@ export default async function handler(req,res){
       return send(res,200,await start(bearer(req),o))}
     return send(res,404,{error:'unknown'});
   }catch(e){console.error('gate',e.message);return send(res,503,{error:'Gate unavailable. Try again.'})}
-      }
+        }
