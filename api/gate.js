@@ -6,7 +6,7 @@ export const bearer=req=>{const h=String(req.headers.authorization||'');return h
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');
   const o=req.headers.origin;if(o&&ORIGINS.has(o)){res.setHeader('Access-Control-Allow-Origin',o);res.setHeader('Vary','Origin')}
-  res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization, X-Gate-Session');
+  res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization, X-Gate-Session, X-Gate-Fp');
   if(req.method==='OPTIONS'){res.statusCode=204;return res.end()}
   const action=String(req.query?.action||'');
   try{
@@ -22,7 +22,7 @@ export default async function handler(req,res){
     if(action==='status')return send(res,200,{enabled:true,...await check(bearer(req),sidOf(req))});
     if(action==='redeem'&&req.method==='POST'){
       if(!o||!ORIGINS.has(o))return send(res,403,{error:'Use the StudyBull website.'});
-      const b=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});return send(res,200,await redeem(bearer(req),b.code,undefined,sidOf(req)))}
+      const b=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});return send(res,200,await redeem(bearer(req),b.code,undefined,sidOf(req),String(req.headers['x-gate-fp']||'')))}
     if(action==='grant'&&req.method==='POST'){
       if(!o||!ORIGINS.has(o))return send(res,403,{error:'Use the StudyBull website.'});
       return send(res,200,await grant(bearer(req),sidOf(req)))}
@@ -35,4 +35,4 @@ export default async function handler(req,res){
       return send(res,200,await start(bearer(req),o))}
     return send(res,404,{error:'unknown'});
   }catch(e){console.error('gate',e.message);return send(res,503,{error:'Gate unavailable. Try again.'})}
-                                         }
+                                                                                               }
