@@ -1,5 +1,5 @@
 // Bot experience (staged, animated messages) and owner panel. Only touches users who interacted with the bot or joined through the gate.
-import {cfg,rd,wr,now,hash,ckey,tg,tgDoc,isM,isMember,ukey,userCode,linkDevice,pkey,invDevice,settings,saveSettings,touch,logEv,IDX,LOG,OWN,STATE} from './_gate.js';
+import {cfg,rd,wr,now,hash,ckey,tg,tgDoc,isM,isMember,ukey,userCode,deviceLink,linkDevice,pkey,invDevice,settings,saveSettings,touch,logEv,IDX,LOG,OWN,STATE} from './_gate.js';
 const h=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const sleep=ms=>process.env.GATE_MEM?Promise.resolve():new Promise(r=>setTimeout(r,ms));
 const say=(chat,text,extra)=>tg('sendMessage',{chat_id:chat,text,parse_mode:'HTML',disable_web_page_preview:true,...extra});
@@ -28,8 +28,8 @@ async function verifyFlow(chat,uid,base,from,mid){
   if(!mm.ok){await edit(chat,mid,'⚠️ <b>Could not check right now.</b>\nTry again in a minute.',kb([[{text:'🔄 Try again',callback_data:'v'}]]));return}
   if(!mm.member){await edit(chat,mid,'😕 <b>You have not joined yet</b>\nJoin the channel first, then tap Verify.',kb(joinRows()));return}
   await edit(chat,mid,`🔐 <b>Creating your access</b>\n${bar(5)}`);
-  const code=await userCode(uid,false,from);await touch(from,{s:true});await sleep(400);
-  await edit(chat,mid,`✅ <b>Verified!</b>\n\nYour account is linked. Tap the button to open StudyBull and Batches unlock on that browser.\n\n🔑 Up to ${cfg().maxDevices} browsers at a time\n🚪 If you leave the channel, access locks again`,kb(siteBtn(base,code)))}
+  await userCode(uid,false,from);const code=await deviceLink(uid);await touch(from,{s:true});await sleep(400);
+  await edit(chat,mid,`✅ <b>Verified!</b>\n\nTap the button to open StudyBull. This personal link works only on the first browser that opens it, so do not share it.\n\n🔑 Up to ${cfg().maxDevices} browsers at a time\n🚪 If you leave the channel, access locks again`,kb(siteBtn(base,code)))}
 async function welcome(chat,from,base){await touch(from,{s:true});const st=await settings();await say(chat,st.welcome?h(st.welcome):DEFAULT_WELCOME);await verifyFlow(chat,from.id,base,from)}
 const isOwner=async id=>{const o=await rd(OWN);return !!(o&&o.id&&o.id===id)};
 // ---- owner panel ----
@@ -157,7 +157,7 @@ export async function handleUpdate(up,base){
     let u=await rd(ukey(uid));if(u){u.member=member;u.checkedAt=now();await wr(ukey(uid),u)}
     const link=cm.invite_link?.invite_link;
     if(member&&!was&&link){const inv=await invDevice(link),dev=inv&&inv.dev;
-      if(dev&&!(u&&(u.banned||u.removed))){await touch(usr,{src:'invite'});const code=await userCode(uid,false,usr);await linkDevice(uid,dev);
+      if(dev&&!(u&&(u.banned||u.removed))){await touch(usr,{src:'invite'});await userCode(uid,false,usr);await linkDevice(uid,dev);const code=await deviceLink(uid,dev);
         const x=(await rd(IDX))||{u:{}};if(x.u[uid]&&x.u[uid].s){await say(uid,'✅ <b>Verified automatically!</b>\nThanks for joining. Your StudyBull Batches are unlocked on the browser you came from.',kb(siteBtn(base,code,inv.origin)))}}}
     return}
   const m=up.message;if(!m||m.chat?.type!=='private'||!m.from)return;
@@ -175,7 +175,8 @@ export async function handleUpdate(up,base){
       if(c==='/find'){await setState({mode:'find'});const q=t.split(/\s+/).slice(1).join(' ');if(q){m.text=q;if(await ownerText(chat,m))return}return say(chat,'🔎 Send a name, @username or Telegram id.')}}
     if(!t.startsWith('/')&&await ownerText(chat,m))return;
     if(t==='/cancel'&&await ownerText(chat,m))return}
-  if(/^\/reset\b/.test(t)){const mm=await isMember(m.from.id);if(mm.ok&&mm.member&&!(await isBanned(m.from.id))){const nc=await userCode(m.from.id,true,m.from);return say(chat,'🔑 <b>New link made.</b> The old link no longer works. Browsers already unlocked stay unlocked.',kb(siteBtn(base,nc)))}return welcome(chat,m.from,base)}
+  if(/^\/?(get access|access)\s*$/i.test(t))return verifyFlow(chat,m.from.id,base,m.from);
+  if(/^\/reset\b/.test(t)){const mm=await isMember(m.from.id);if(mm.ok&&mm.member&&!(await isBanned(m.from.id))){await userCode(m.from.id,true,m.from);const nc=await deviceLink(m.from.id);return say(chat,'🔑 <b>New link made.</b> The old link no longer works. Browsers already unlocked stay unlocked.',kb(siteBtn(base,nc)))}return welcome(chat,m.from,base)}
   const code=(t.match(/^\/start\s+([A-Za-z0-9_-]{6,40})$/)||[])[1];
   if(!code){return welcome(chat,m.from,base)}
   const p=await rd(pkey(code));
@@ -188,5 +189,5 @@ export async function handleUpdate(up,base){
   if(!mm.ok){await edit(chat,mid,'⚠️ <b>Could not check right now.</b>\nTry again in a minute.',kb([[{text:'🔄 Try again',callback_data:'v'}]]));return}
   if(!mm.member){await edit(chat,mid,'😕 <b>You have not joined yet</b>\nJoin the channel first, then tap Verify.',kb(joinRows()));return}
   await edit(chat,mid,`🔐 <b>Linking your browser</b>\n${bar(4)}`);
-  await linkDevice(m.from.id,p.dev);await wr(pkey(code),{dev:p.dev,exp:0});const uc=await userCode(m.from.id,false,m.from);await sleep(400);
+  await linkDevice(m.from.id,p.dev);await wr(pkey(code),{dev:p.dev,exp:0});await userCode(m.from.id,false,m.from);const uc=await deviceLink(m.from.id,p.dev);await sleep(400);
   await edit(chat,mid,'✅ <b>Verified!</b>\nGo back to the StudyBull site, it unlocks by itself. You can close this chat.',kb(siteBtn(base,uc,p.origin)))}
