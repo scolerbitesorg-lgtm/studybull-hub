@@ -1,5 +1,5 @@
 import {list,del} from '@vercel/blob';
-import {cfg,enabled,start,check,handleUpdate,setup,redeem,claimCode,rd,grant,recognize,loginDevice,settings,saveSettings,setMenu} from './_gate.js';
+import {ensureBid,cfg,enabled,start,check,handleUpdate,setup,redeem,claimCode,rd,grant,recognize,loginDevice,settings,saveSettings,setMenu} from './_gate.js';
 const ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtms-projects.vercel.app','https://studybull.qd.je','https://www.studybull.qd.je']);
 const send=(res,s,d)=>{res.statusCode=s;res.setHeader('Content-Type','application/json; charset=utf-8');res.end(JSON.stringify(d))};
 const sigOf=req=>{const fp=String(req.headers['x-gate-fp']||'');if(!/^[a-z0-9]{8,40}$/.test(fp))return '';const ip=String(req.headers['x-forwarded-for']||req.socket?.remoteAddress||'').split(',')[0].trim();
@@ -30,6 +30,7 @@ export default async function handler(req,res){
     if(action==='claimcode'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});return send(res,200,await claimCode())}
     if(action==='info'){const st=enabled()?await settings():{};return send(res,200,{enabled:enabled(),link:cfg().link,name:process.env.GATE_CHANNEL_NAME||'StudyBull',mode:st.mode==='every'?'every':'once',login:Boolean(st.login),botId:st.login?cfg().token.split(':')[0]:'',channels:(st.channels||[]).map(c=>({name:c.name,link:c.link}))})}
     if(!enabled())return send(res,200,{enabled:false,ok:true});
+    if(action==='bid'){const b=await ensureBid(bearer(req));return send(res,200,b?{ok:true,bid:b,url:`https://t.me/${cfg().bot}?start=${b}`}:{ok:false})}
     if(action==='status')return send(res,200,{enabled:true,...await check(bearer(req),sidOf(req),false,sigOf(req))});
     if(action==='redeem'&&req.method==='POST'){
       if(!o||!ORIGINS.has(o))return send(res,403,{error:'Use the StudyBull website.'});
@@ -49,4 +50,4 @@ export default async function handler(req,res){
       return send(res,200,await start(bearer(req),o))}
     return send(res,404,{error:'unknown'});
   }catch(e){console.error('gate',e.message);return send(res,503,{error:'Gate unavailable. Try again.'})}
-}
+      }
