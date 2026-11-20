@@ -1,4 +1,4 @@
-import {cfg,enabled,start,check,handleUpdate,setup,redeem,claimCode,grant,loginDevice,settings} from './_gate.js';
+import {cfg,enabled,start,check,handleUpdate,setup,redeem,claimCode,grant,loginDevice,settings,saveSettings} from './_gate.js';
 const ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtms-projects.vercel.app','https://studybull.qd.je','https://www.studybull.qd.je']);
 const send=(res,s,d)=>{res.statusCode=s;res.setHeader('Content-Type','application/json; charset=utf-8');res.end(JSON.stringify(d))};
 const sidOf=req=>String(req.headers['x-gate-session']||'');
@@ -16,6 +16,7 @@ export default async function handler(req,res){
     if(action==='setup'&&req.method==='POST'){ // owner runs once: sets the Telegram webhook
       if(!enabled()||(bearer(req)!==cfg().secret&&bearer(req)!==cfg().token))return send(res,403,{error:'forbidden'});
       return send(res,200,await setup('https://'+req.headers.host))}
+    if(action==='setlogin'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});const st=await settings();st.login=String(req.query?.on)==='1';await saveSettings(st);return send(res,200,{login:st.login})}
     if(action==='claimcode'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});return send(res,200,await claimCode())}
     if(action==='info'){const st=enabled()?await settings():{};return send(res,200,{enabled:enabled(),link:cfg().link,name:process.env.GATE_CHANNEL_NAME||'StudyBull',mode:st.mode==='every'?'every':'once',login:Boolean(st.login),botId:st.login?cfg().token.split(':')[0]:''})}
     if(!enabled())return send(res,200,{enabled:false,ok:true});
@@ -35,4 +36,4 @@ export default async function handler(req,res){
       return send(res,200,await start(bearer(req),o))}
     return send(res,404,{error:'unknown'});
   }catch(e){console.error('gate',e.message);return send(res,503,{error:'Gate unavailable. Try again.'})}
-                                                                                               }
+}
