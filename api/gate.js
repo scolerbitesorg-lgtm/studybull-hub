@@ -1,4 +1,4 @@
-import {cfg,enabled,start,check,handleUpdate,setup,redeem,claimCode,grant,loginDevice,settings,saveSettings} from './_gate.js';
+import {cfg,enabled,start,check,handleUpdate,setup,redeem,claimCode,rd,grant,loginDevice,settings,saveSettings,setMenu} from './_gate.js';
 const ORIGINS=new Set(['https://studybull-hub.vercel.app','https://studybull-hub-git-staging-scolerbitesorg-lgtms-projects.vercel.app','https://studybull.qd.je','https://www.studybull.qd.je']);
 const send=(res,s,d)=>{res.statusCode=s;res.setHeader('Content-Type','application/json; charset=utf-8');res.end(JSON.stringify(d))};
 const sidOf=req=>String(req.headers['x-gate-session']||'');
@@ -16,9 +16,10 @@ export default async function handler(req,res){
     if(action==='setup'&&req.method==='POST'){ // owner runs once: sets the Telegram webhook
       if(!enabled()||(bearer(req)!==cfg().secret&&bearer(req)!==cfg().token))return send(res,403,{error:'forbidden'});
       return send(res,200,await setup('https://'+req.headers.host))}
+    if(action==='setmenu'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});const o=await rd('gate/owner.json');await setMenu(o&&o.id);return send(res,200,{ok:true})}
     if(action==='setlogin'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});const st=await settings();st.login=String(req.query?.on)==='1';await saveSettings(st);return send(res,200,{login:st.login})}
     if(action==='claimcode'&&req.method==='POST'){if(!enabled()||bearer(req)!==cfg().token)return send(res,403,{error:'forbidden'});return send(res,200,await claimCode())}
-    if(action==='info'){const st=enabled()?await settings():{};return send(res,200,{enabled:enabled(),link:cfg().link,name:process.env.GATE_CHANNEL_NAME||'StudyBull',mode:st.mode==='every'?'every':'once',login:Boolean(st.login),botId:st.login?cfg().token.split(':')[0]:''})}
+    if(action==='info'){const st=enabled()?await settings():{};return send(res,200,{enabled:enabled(),link:cfg().link,name:process.env.GATE_CHANNEL_NAME||'StudyBull',mode:st.mode==='every'?'every':'once',login:Boolean(st.login),botId:st.login?cfg().token.split(':')[0]:'',channels:(st.channels||[]).map(c=>({name:c.name,link:c.link}))})}
     if(!enabled())return send(res,200,{enabled:false,ok:true});
     if(action==='status')return send(res,200,{enabled:true,...await check(bearer(req),sidOf(req))});
     if(action==='redeem'&&req.method==='POST'){
