@@ -1,5 +1,5 @@
 // Bot experience (staged, animated messages) and owner panel. Only touches users who interacted with the bot or joined through the gate.
-import {bidDev,dkey,cfg,rd,wr,now,hash,ckey,tg,tgDoc,isM,isMember,isMemberIn,channels,ukey,userCode,deviceLink,linkDevice,pkey,invDevice,settings,saveSettings,touch,logEv,IDX,LOG,OWN,STATE} from './_gate.js';
+import {bindState,bidDev,dkey,cfg,rd,wr,now,hash,ckey,tg,tgDoc,isM,isMember,isMemberIn,channels,ukey,userCode,deviceLink,linkDevice,pkey,invDevice,settings,saveSettings,touch,logEv,IDX,LOG,OWN,STATE} from './_gate.js';
 const h=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const sleep=ms=>process.env.GATE_MEM?Promise.resolve():new Promise(r=>setTimeout(r,ms));
 const say=(chat,text,extra)=>tg('sendMessage',{chat_id:chat,text,parse_mode:'HTML',disable_web_page_preview:true,...extra});
@@ -28,6 +28,12 @@ async function verifyFlow(chat,uid,base,from,mid,head){
   {const u0=await rd(ukey(uid));const pend=!!(u0&&u0.req==='pending');
    if(u0&&u0.banned){await ed(mid,BANNED_MSG(uid),reqKb(pend));return}
    if(u0&&u0.removed){await ed(mid,REMOVED_MSG(uid),reqKb(pend));return}}
+  // already verified: no progress animation, just a calm status with the access button
+  {const u1=await rd(ukey(uid));
+   if(u1&&u1.member===true&&u1.code){const m1=await isMember(uid);
+     if(m1.ok&&m1.member){await userCode(uid,false,from);const lk=await deviceLink(uid);
+       await edit(chat,mid,'✅ <b>You are verified</b>\n\nYour access is active. Open StudyBull with the button below. Your account is tied to one device, and the link works on the first browser that opens it, so do not share it.\n\n🚪 If you leave a required channel, access locks again',kb(siteBtn(base,lk)));return}
+     if(m1.ok&&!m1.member){u1.member=false;u1.checkedAt=now();await wr(ukey(uid),u1)}}}
   await typing(chat);
   const first=await ed(mid,`🔍 <b>Checking your membership</b>\n${bar(1)} ${SPIN[0]}`);
   mid=mid||first?.result?.message_id;
@@ -37,7 +43,17 @@ async function verifyFlow(chat,uid,base,from,mid,head){
   if(!mm.member){const n=(mm.missing||[]).length;await ed(mid,'😕 <b>You have not joined yet</b>\n'+(n>1?`Join the ${n} channels below, then tap Verify.`:'Join the channel first, then tap Verify.'),kb(joinRows(mm.missing)));return}
   await ed(mid,`🔐 <b>Creating your access</b>\n${bar(5)} ✨`);
   await userCode(uid,false,from);const code=await deviceLink(uid);await touch(from,{s:true});await sleep(300);
-  await finalFx(chat,mid,H+`✅ <b>Verified!</b>\n\nTap the button to open StudyBull. This personal link works only on the first browser that opens it, so do not share it.\n\n🔑 Up to ${cfg().maxDevices} browsers at a time\n🚪 If you leave a required channel, access locks again`,kb(siteBtn(base,code)))}
+  await finalFx(chat,mid,H+`✅ <b>Verified!</b>\n\nTap the button to open StudyBull. This personal link works only on the first browser that opens it, so do not share it.\n\n🔑 Your account is tied to one device\n🚪 If you leave a required channel, access locks again`,kb(siteBtn(base,code)))}
+const LOCKED_MSG={locked:'📱 <b>This account is linked to another device</b>\nFor safety, one Telegram account works on one device only. If you changed or lost your device, ask the admin to move your access.',taken:'🔒 <b>This device is already used by another account</b>\nOne device works with one Telegram account only.'};
+const dcKb=pending=>kb([[pending?{text:'⏳ Request sent',callback_data:'dc'}:{text:'📱 Request device change',callback_data:'dc'}]]);
+async function lockedReply(chat,uid,why){const u=await rd(ukey(uid));return sayFresh(chat,LOCKED_MSG[why],why==='locked'?dcKb(!!(u&&u.devReq==='pending')):undefined)}
+async function deviceChange(chat,from,mid){const uid=from.id;const u=await rd(ukey(uid));
+  if(!u||!u.devices||!Object.keys(u.devices).length)return verifyFlow(chat,uid,'',from,mid);
+  if(u.devReq==='pending')return edit(chat,mid,'⏳ <b>Your device change request is already with the admin.</b>\nYou will get a message when it is decided.');
+  u.devReq='pending';u.devReqAt=now();await wr(ukey(uid),u);
+  await edit(chat,mid,'✅ <b>Request sent.</b>\nThe admin will review it. You will get a message here when it is decided.');
+  const o=await rd(OWN);if(o&&o.id){const nm=h([from.first_name,from.last_name].filter(Boolean).join(' ')||'User')+(from.username?' @'+h(from.username):'');
+    await say(o.id,`📱 <b>Device change request</b>\n${nm}\nID: <code>${uid}</code>\nApproving signs them out of their current device so they can link a new one.`,kb([[{text:'✅ Approve',callback_data:'a:da:'+uid},{text:'❌ Reject',callback_data:'a:dr:'+uid}],[{text:'👤 Details',callback_data:'a:d:'+uid}]]))}}
 const siteUrl=(base)=>cfg().site||'https://studybull.qd.je';
 async function pinLink(chat,text){const r=await say(chat,text,kb([[{text:'🚀 Open StudyBull',url:siteUrl()}]]));const id=r&&r.result&&r.result.message_id;if(id)await tg('pinChatMessage',{chat_id:chat,message_id:id,disable_notification:true}).catch(()=>{});return id}
 async function welcome(chat,from,base){const x=(await rd(IDX))||{u:{}};const had=x.u[from.id]&&x.u[from.id].pn;await touch(from,{s:true,pn:1});
@@ -176,6 +192,13 @@ async function adminCb(chat,mid,data,from){
       return edit(chat,mid,`✅ Approved <code>${h(id)}</code>. They were told to tap Verify.`,kb(back))}
     u.req='rejected';await wr(ukey(id),u);await say(id,'❌ <b>Your request was not approved.</b>',undefined).catch(()=>{});
     return edit(chat,mid,`❌ Rejected <code>${h(id)}</code>.`,kb(back))}
+  if(k==='da'||k==='dr'){if(!u)return edit(chat,mid,'No record.',kb(back));
+    if(u.devReq!=='pending')return edit(chat,mid,'ℹ️ This request was already handled.',kb(back));
+    if(k==='da'){u.devices={};u.devReq='approved';await wr(ukey(id),u);
+      await say(id,'✅ <b>Device change approved.</b>\nOpen StudyBull on your new device and tap Verify.',kb([[{text:'✅ Verify',callback_data:'v'}]])).catch(()=>{});
+      return edit(chat,mid,`✅ Approved <code>${h(id)}</code>. The old device is signed out.`,kb(back))}
+    u.devReq='rejected';await wr(ukey(id),u);await say(id,'❌ <b>Your device change request was not approved.</b>').catch(()=>{});
+    return edit(chat,mid,`❌ Rejected <code>${h(id)}</code>.`,kb(back))}
   if(k==='nc'){if(!u)return edit(chat,mid,'No record.',kb(back));await userCode(id,true);return detail(chat,mid,id)}
 }
 async function requestAccess(chat,from,mid){
@@ -205,6 +228,7 @@ export async function handleUpdate(up,base){
   const m=up.message;if(!m||m.chat?.type!=='private'||!m.from)return;
   await Promise.all([del(m.chat.id,m.message_id),onMessage(m,base)])}
 async function cbRoute(q,chat,mid,base){
+    if(q.data==='dc'){await touch(q.from,{s:true});return deviceChange(chat,q.from,mid)}
     if(q.data==='rq'){await touch(q.from,{s:true});return requestAccess(chat,q.from,mid)}
     if(q.data==='v'){await touch(q.from,{s:true});return verifyFlow(chat,q.from.id,base,q.from,mid)}
     if(q.data&&q.data.startsWith('a:')&&await isOwner(q.from.id))return adminCb(chat,mid,q.data,q.from)}
@@ -222,6 +246,7 @@ async function memberEvent(cm,base){
     if(dev&&!(u&&(u.banned||u.removed))){
       const x=(await rd(IDX))||{u:{}};const started=x.u[uid]&&x.u[uid].s;
       if(!all){if(started&&missing.length)await say(uid,`✅ Joined. Please also join: <b>${missing.map(c=>h(c.name)).join(', ')}</b>, then tap Verify.`,kb(joinRows(missing)));return}
+      {const bs=await bindState(uid,dev);if(bs){if(started)await say(uid,LOCKED_MSG[bs],bs==='locked'?dcKb(false):undefined);return}}
       await touch(usr,{src:'invite'});await userCode(uid,false,usr);await linkDevice(uid,dev);const code=await deviceLink(uid,dev);
       if(started){await say(uid,'✅ <b>Verified automatically!</b>\nThanks for joining. Your StudyBull Batches are unlocked on the browser you came from.',kb(siteBtn(base,code,inv.origin)))}}}
 }
@@ -238,6 +263,7 @@ async function bindBid(chat,m,base,id){
   const mm=await isMember(uid);
   if(!mm.ok)return sayFresh(chat,'⚠️ <b>Could not check right now.</b>\nTry again in a minute.',kb([[{text:'🔄 Try again',callback_data:'v'}]]));
   if(!mm.member)return sayFresh(chat,'😕 <b>You have not joined yet</b>\nJoin the channel first, then send the ID again.',kb(joinRows(mm.missing)));
+  {const bs=await bindState(uid,dev);if(bs)return lockedReply(chat,uid,bs)}
   await touch(m.from,{s:true});await userCode(uid,false,m.from);await linkDevice(uid,dev);
   return finalFx(chat,undefined,'✅ <b>Browser linked!</b>\nGo back to the StudyBull site, it unlocks by itself. You can close this chat.\n\n🚪 If you leave a required channel, access locks again')}
 async function onMessage(m,base){
@@ -274,6 +300,12 @@ async function onMessage(m,base){
   const p=await rd(pkey(code));
   if(!p||p.exp<now()){return welcome(chat,m.from,base)}
   {const u1=await rd(ukey(m.from.id));if(u1&&(u1.banned||u1.removed))return verifyFlow(chat,m.from.id,base,m.from)}
+  {const bs0=await bindState(m.from.id,p.dev);if(bs0)return lockedReply(chat,m.from.id,bs0)}
+  {const u2=await rd(ukey(m.from.id));
+   if(u2&&u2.member===true&&u2.code){const m2=await isMember(m.from.id);
+     if(m2.ok&&m2.member){await linkDevice(m.from.id,p.dev);await wr(pkey(code),{dev:p.dev,exp:0});await touch(m.from,{s:true});const uc2=await deviceLink(m.from.id,p.dev);
+       return sayFresh(chat,'✅ <b>Browser linked</b>\nGo back to the StudyBull site, it unlocks by itself. You can close this chat.',kb(siteBtn(base,uc2,p.origin)))}
+     if(m2.ok&&!m2.member){u2.member=false;u2.checkedAt=now();await wr(ukey(m.from.id),u2)}}}
   await typing(chat);
   const first=await sayFresh(chat,`🔍 <b>Checking your membership</b>\n${bar(1)} ${SPIN[0]}`);const mid=first?.result?.message_id;
   const [mm]=await Promise.all([isMember(m.from.id),sleep(600)]);
