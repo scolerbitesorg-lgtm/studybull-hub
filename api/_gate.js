@@ -9,8 +9,8 @@ export const cfg=()=>({
   bot:(process.env.GATE_BOT_USERNAME||'').replace(/^@/,''),
   secret:process.env.GATE_WEBHOOK_SECRET||'',
   api:process.env.GATE_TG_API||'https://api.telegram.org',
-  recheck:Number(process.env.GATE_RECHECK_SECONDS)||300,
-  maxDevices:Number(process.env.GATE_MAX_DEVICES)||3,
+  recheck:Math.min(Number(process.env.GATE_RECHECK_SECONDS)||60,60),
+  maxDevices:1,
   site:(process.env.GATE_SITE_URL||'').replace(/\/$/,'')
 });
 export const enabled=()=>{const c=cfg();return Boolean(c.token&&c.channel&&c.bot&&c.secret)};
@@ -45,6 +45,11 @@ export async function userCode(tgid,rotate,from){
   let u=(await rd(ukey(tgid)))||{tg:tgid,devices:{}};
   if(!u.code||rotate){if(u.code)await wr(ckey(hash(u.code)),{tg:tgid,off:true});u.code=crypto.randomBytes(18).toString('base64url');await wr(ckey(hash(u.code)),{tg:tgid})}
   u.member=true;u.checkedAt=now();await wr(ukey(tgid),u);return u.code}
+// one Telegram account <-> one device. '' = free to bind, 'locked' = account already bound to another device, 'taken' = this device belongs to another account
+export async function bindState(uid,dev){const u=await rd(ukey(uid));const hd=hash(dev);
+  if(u&&u.devices&&Object.keys(u.devices).length&&!u.devices[hd]&&!u.banned&&!u.removed)return 'locked';
+  const d=await rd(dkey(dev));if(d&&d.tg!==uid){const ou=await rd(ukey(d.tg));if(ou&&ou.devices&&ou.devices[hd]&&!ou.banned&&!ou.removed&&ou.member!==false)return 'taken'}
+  return ''}
 export async function linkDevice(tgid,dev,maxD){
   const u=(await rd(ukey(tgid)))||{tg:tgid,devices:{}};u.member=true;u.checkedAt=now();u.devices=u.devices||{};u.devices[hash(dev)]=now();
   const ids=Object.keys(u.devices).sort((a,b)=>u.devices[b]-u.devices[a]);for(const old of ids.slice(maxD||cfg().maxDevices))delete u.devices[old];
@@ -113,6 +118,7 @@ export async function loginDevice(dev,sid,user){
   const u0=await rd(ukey(v.id));if(u0&&u0.banned)return {ok:false,reason:'banned'};
   const m=await isMember(v.id);if(!m.ok)return {ok:false,reason:'error'};if(!m.member)return {ok:false,reason:'notmember'};
   if(u0&&u0.removed)return {ok:false,reason:'removed'};
+  {const bs=await bindState(v.id,dev);if(bs)return {ok:false,reason:bs}}
   await touch(v);await userCode(v.id,false);await linkDevice(v.id,dev);
   if(okId(sid))await wr(gkey(dev,sid),{exp:now()+43200});
   return {ok:true}}
@@ -130,6 +136,7 @@ export async function redeem(dev,code,maxD,sid,fp){
   if(!c||c.off)return {ok:false,reason:'badcode'};
   const bu=await rd(ukey(c.tg));if(bu&&bu.banned)return {ok:false,reason:'banned'};if(bu&&bu.removed)return {ok:false,reason:'removed'};
   const m=await isMember(c.tg);if(!m.ok)return {ok:false,reason:'error'};if(!m.member)return {ok:false,reason:'left'};
+  {const bs=await bindState(c.tg,dev);if(bs)return {ok:false,reason:bs}}
   await linkDevice(c.tg,dev,maxD);if(one&&!c.usedAt)await wr(alk(code),{...c,fp:hash(fp),usedAt:now()});if(okId(sid))await wr(gkey(dev,sid),{exp:now()+43200});return {ok:true}}
 export async function claimCode(){const o=await rd(OWN);if(o&&o.id)return {error:'owner already set'};const code=crypto.randomBytes(6).toString('hex');await wr('gate/claim.json',{h:hash(code),exp:now()+86400});return {code}}
 export async function setup(base){const c=cfg();return tg('setWebhook',{url:base+'/api/gate?action=hook',secret_token:c.secret,allowed_updates:['message','chat_member','callback_query'],drop_pending_updates:true})}
